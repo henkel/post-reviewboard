@@ -84,7 +84,8 @@
       <ul id="navbar">
 {% if user.is_authenticated %}
        <li><a href="{% url dashboard %}">{% trans "My Dashboard" %}</a></li>
-       <li><a href="{% url new-review-request %}">{% trans "New Review Request" %}</a></li>
+       <li><a href="{% url new-review-request %}">{% trans "Pre-commit Review" %}</a></li>
+       <li><a href="{% url new-post-review-request %}">{% trans "Post-commit Review" %}</a></li>
        <li>-</li>
 {% endif %}
        <li><a href="{% url all-review-requests %}">{% trans "All review requests" %}</a></li>

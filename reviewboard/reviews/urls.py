@@ -5,6 +5,7 @@ urlpatterns = patterns('reviewboard.reviews.views',
 
     # Review request creation
     url(r'^new/$', 'new_review_request', name="new-review-request"),
+    url(r'^newpost/$', 'new_post_review_request', name="new-post-review-request"),
 
     # Review request detail
     url(r'^(?P<review_request_id>[0-9]+)/$', 'review_detail',

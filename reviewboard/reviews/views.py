@@ -41,7 +41,8 @@ from reviewboard.reviews.datagrids import DashboardDataGrid, \
 from reviewboard.reviews.errors import OwnershipError
 from reviewboard.reviews.forms import NewReviewRequestForm, \
                                       UploadDiffForm, \
-                                      UploadScreenshotForm
+                                      UploadScreenshotForm, \
+                                      NewPostReviewRequestForm
 from reviewboard.reviews.models import Comment, ReviewRequest, \
                                        ReviewRequestDraft, Review, Group, \
                                        Screenshot, ScreenshotComment
@@ -77,6 +78,35 @@ def new_review_request(request,
         'fields': simplejson.dumps(form.field_mapping),
     }))
 
+
+@login_required
+def new_post_review_request(request,
+                       template_name='reviews/new_post_review_request.html'):
+    """
+    Displays a New Post Review Request form and handles the creation of a
+    review request based on either an existing changeset or the provided
+    information.
+    """
+    if request.method == 'POST':
+        form = NewPostReviewRequestForm(request.POST, request.FILES)
+
+        if form.is_valid():
+            try:
+                review_request = form.create(
+                    user=request.user,
+                    diff_file=request.FILES.get('diff_path'),
+                    parent_diff_file=request.FILES.get('parent_diff_path'))
+                return HttpResponseRedirect(review_request.get_absolute_url())
+            except (OwnershipError, SCMError, ValueError):
+                pass
+    else:
+        form = NewPostReviewRequestForm()
+
+    return render_to_response(template_name, RequestContext(request, {
+        'form': form,
+        'fields': simplejson.dumps(form.field_mapping),
+    }))
+    
 
 def make_review_request_context(review_request, extra_context):
     """Returns a dictionary for template contexts used for review requests.
