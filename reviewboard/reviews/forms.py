@@ -373,29 +373,53 @@ class NewPostReviewRequestForm(forms.Form):
         repository = self.cleaned_data['repository']
         changenum = self.cleaned_data['changenum'] or None
 
+        changenum_list = []
+        changenum_error_field = ''
+        
+        fields = repository.get_scmtool().get_fields()
+        
+        if 'change_numbers' in fields:
+            changenum_error_field = 'change_numbers'
+            diff_error_field = 'change_numbers'
+            split_field = re.split('\s*,{0,1}\s*', self.cleaned_data['change_numbers'])
+            for number in split_field:
+                if number.strip() != '':
+                    changenum_list.append(int(number))
+                
+            # Eliminate duplicates    
+            changenum_list = list(set(changenum_list))
+        
+        changenum_list.sort()
+        
+        if len(changenum_list) > 0:
+            changenum = int(changenum_list[0])
+        else:
+            changenum = self.cleaned_data['changenum'] or None
+                
         # It's a little odd to validate this here, but we want to have access to
         # the user.
         if changenum:
+            changeset = None
             try:
                 changeset = repository.get_scmtool().get_changeset(changenum)
             except NotImplementedError:
                 # This scmtool doesn't have changesets
                 pass
-            except SCMError, e:
-                self.errors['changenum'] = forms.util.ErrorList([str(e)])
-                raise ChangeSetError()
             except ChangeSetError, e:
-                self.errors['changenum'] = forms.util.ErrorList([str(e)])
+                self.errors[diff_error_field] = forms.util.ErrorList([str(e)])
                 raise e
+            except SCMError, e:
+                self.errors[diff_error_field] = forms.util.ErrorList([str(e)])
+                raise ChangeSetError()
 
             if not changeset:
-                self.errors['changenum'] = forms.util.ErrorList([
+                self.errors[diff_error_field] = forms.util.ErrorList([
                     'This change number does not represent a valid '
                     'changeset.'])
                 raise InvalidChangeNumberError()
 
             if user.username != changeset.username:
-                self.errors['changenum'] = forms.util.ErrorList([
+                self.errors[diff_error_field] = forms.util.ErrorList([
                     'This change number is owned by another user.'])
                 raise OwnershipError()
 
@@ -415,6 +439,26 @@ class NewPostReviewRequestForm(forms.Form):
                 review_request.public = False
 
             review_request.save()
+
+        if diff_file == None:
+            tool = repository.get_scmtool()
+
+            try:
+                # Create diff file 
+                diff_file = tool.get_diff_file(changenum_list) 
+            
+            except ChangeSetError, e:
+                review_request.delete()
+                self.errors[changenum_error_field] = forms.util.ErrorList("Could not create diff for specified changeset:" + str(e))
+                raise
+            except Exception, e:
+                review_request.delete()
+                self.errors[changenum_error_field] = forms.util.ErrorList([e])
+                raise            
+                
+            # Replace description
+            review_request.description = diff_file.description
+
 
         if diff_file:
             diff_form = UploadDiffForm(
