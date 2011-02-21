@@ -28,3 +28,5 @@ dist
 django_cache
 pickle
 temp
+/reviewboard/.project
+/reviewboard/.pydevproject
