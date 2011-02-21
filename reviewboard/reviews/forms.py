@@ -97,7 +97,7 @@ class NewReviewRequestForm(forms.Form):
         valid_repos = [('', self.NO_REPOSITORY_ENTRY)]
 
         repo_ids = [
-            id for (id, name) in self.fields['repository'].choices if id
+            id for (id, _) in self.fields['repository'].choices if id
         ]
 
         # Show the explanation for the "None" entry when it's selected.
@@ -337,7 +337,7 @@ class NewPostReviewRequestForm(forms.Form):
         valid_repos = [('', self.NO_REPOSITORY_ENTRY)]
 
         repo_ids = [
-            id for (id, name) in self.fields['repository'].choices if id
+            id for (id, _) in self.fields['repository'].choices if id
         ]
 
         # Show the explanation for the "None" entry when it's selected.
