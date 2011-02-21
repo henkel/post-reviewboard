@@ -322,6 +322,10 @@ class NewPostReviewRequestForm(forms.Form):
         required=False)
 
     changenum = forms.IntegerField(label=_("Change Number"), required=False)
+    
+    # match '23 42 3343' or '23, 34 , 235235'
+    change_numbers = forms.RegexField(regex=r'^([0-9]+\s*,{0,1}\s*)+$', label=_("Change Numbers"), max_length=2048, required=False, help_text=_("A list of commit identifiers, e.g. 12345 56789 34567"))
+
 
     field_mapping = {}
 
@@ -330,7 +334,7 @@ class NewPostReviewRequestForm(forms.Form):
 
         # Repository ID : visible fields mapping.  This is so we can
         # dynamically show/hide the relevant fields with javascript.
-        valid_repos = []
+        valid_repos = [('', self.NO_REPOSITORY_ENTRY)]
 
         repo_ids = [
             id for (id, name) in self.fields['repository'].choices if id
@@ -341,8 +345,8 @@ class NewPostReviewRequestForm(forms.Form):
 
         for repo in Repository.objects.filter(pk__in=repo_ids).order_by("name"):
             try:
-                self.field_mapping[repo.id] = repo.get_scmtool().get_fields()
                 tool = repo.get_scmtool()
+                self.field_mapping[repo.id] = tool.get_fields()
                 if hasattr(tool, "support_post_commit") and tool.support_post_commit:
                     valid_repos.append((repo.id, repo.name))
 
