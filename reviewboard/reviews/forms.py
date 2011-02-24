@@ -458,8 +458,7 @@ class NewPostReviewRequestForm(forms.Form):
                 
             # Replace description
             review_request.description = diff_file.description
-
-
+           
         if diff_file:
             diff_form = UploadDiffForm(
                 review_request,
@@ -482,22 +481,22 @@ class NewPostReviewRequestForm(forms.Form):
                 diff_form.create(diff_file, parent_diff_file,
                                  attach_to_history=True)
                 if 'path' in diff_form.errors:
-                    self.errors['diff_path'] = diff_form.errors['path']
+                    self.errors[changenum_error_field] = diff_form.errors['path']
                     raise SavedError
                 elif 'base_diff_path' in diff_form.errors:
-                    self.errors['base_diff_path'] = diff_form.errors['base_diff_path']
+                    self.errors[changenum_error_field] = diff_form.errors['base_diff_path']
                     raise SavedError
             except SavedError:
                 review_request.delete()
-                raise
+                raise OwnershipError()
             except diffviewer_forms.EmptyDiffError:
                 review_request.delete()
-                self.errors['diff_path'] = forms.util.ErrorList([
+                self.errors[changenum_error_field] = forms.util.ErrorList([
                     'The selected file does not appear to be a diff.'])
-                raise
+                raise    
             except Exception, e:
                 review_request.delete()
-                self.errors['diff_path'] = forms.util.ErrorList([e])
+                self.errors[changenum_error_field] = forms.util.ErrorList([e])
                 raise
 
         review_request.add_default_reviewers()

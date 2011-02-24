@@ -31,6 +31,9 @@ class UploadDiffForm(forms.Form):
                     "This is usually used for distributed revision control "
                     "systems (Git, Mercurial, etc.)."),
         required=False)
+    changenum = forms.IntegerField(label=_("Change Number"), 
+                                   help_text=_("The new change set to upload."),
+                                   required=True)
 
     # Extensions used for intelligent sorting of header files
     # before implementation files.
@@ -41,10 +44,19 @@ class UploadDiffForm(forms.Form):
         forms.Form.__init__(self, *args, **kwargs)
         self.repository = repository
 
-        if self.repository.get_scmtool().get_diffs_use_absolute_paths():
-            # This SCMTool uses absolute paths, so there's no need to ask
-            # the user for the base directory.
+        tool = self.repository.get_scmtool()
+        
+        if hasattr(tool, "support_post_commit") and tool.support_post_commit:
+            del(self.fields['path'])
+            del(self.fields['parent_diff_path'])
             del(self.fields['basedir'])
+        else:
+            del(self.fields['changenum'])
+            if self.repository.get_scmtool().get_diffs_use_absolute_paths():
+                # This SCMTool uses absolute paths, so there's no need to ask
+                # the user for the base directory.
+                del(self.fields['basedir'])
+
 
     def create(self, diff_file, parent_diff_file=None, diffset_history=None):
         tool = self.repository.get_scmtool()
