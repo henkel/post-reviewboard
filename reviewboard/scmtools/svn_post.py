@@ -161,23 +161,32 @@ class SVNDiffTool:
                 try:                 
                     status = modified_paths[path]
                 
-                    if status.change_type == DiffStatus.ADDED:
-                        diff_lines += self._get_diff_of_new_file(path, status.last_rev)
-    
-                    elif status.change_type == DiffStatus.DELETED:
-                        diff_lines += self._get_diff_of_deleted_file(path, status.first_rev)
-                            
-                    else: # MODIFIED
-                        rev1 = Revision(opt_revision_kind.number, status.first_rev)
-                        rev2 = Revision(opt_revision_kind.number, status.last_rev)
-                        url = self.tool.repopath + path
-                        diff = self.tool.client.diff(temp_dir_name, url, revision1=rev1, revision2=rev2)        
-                        #res = self.tool.execute_command_in_workspace(['difference', '/version:C' + str(status.first_rev) + '~C' + str(status.last_rev), filename])
-                        #enc = self.tool.get_file_encoding(path, str(status.last_rev)) 
-                        #res = unicode(res, enc, errors='replace')
-                        #diff_lines += self._patch_diff_header(res.splitlines(True), path, status.first_rev, status.change_type)
-                        expanded_diff = self._expand_filename(diff, path, status.first_rev, status.last_rev)
-                        diff_lines += expanded_diff
+                    try:
+                        if status.change_type == DiffStatus.ADDED:
+                            diff_lines += self._get_diff_of_new_file(path, status.last_rev)
+        
+                        elif status.change_type == DiffStatus.DELETED:
+                            diff_lines += self._get_diff_of_deleted_file(path, status.first_rev)
+                                
+                        else: # MODIFIED
+                            dummy = self.tool.get_file(path, status.last_rev) # prevent processing of directories
+                            rev1 = Revision(opt_revision_kind.number, status.first_rev)
+                            rev2 = Revision(opt_revision_kind.number, status.last_rev)
+                            try:
+                                diff = self.tool.client.diff(temp_dir_name, self.tool.repopath + path, revision1=rev1, revision2=rev2)
+                                expanded_diff = self._expand_filename(diff, path, status.first_rev, status.last_rev)
+                                diff_lines += expanded_diff
+                            except pysvn.ClientError, e:
+                                if str(e).find('was not found in the repository at revision') != -1:
+                                    # Looks like we have special case here, e.g. replacing and renaming at the same time
+                                    diff_lines += self._get_diff_of_new_file(path, status.last_rev)
+                                else:
+                                    raise
+                    except Exception, e:
+                        if str(e).find('refers to a directory') != -1:
+                            pass  # we ignore all directory modifications
+                        else:
+                            raise
                 
                 except Exception, e:
                     raise ChangeSetError('Problem with ' + path +': '+ str(e))
@@ -188,7 +197,7 @@ class SVNDiffTool:
             raise ChangeSetError('Error creating diff: ' + str(e) )
         
         if len(diff_lines) < 3:
-            raise ChangeSetError('There is no source code difference. The changesets might contain binary files and folders only or neutralize themselves.')
+            raise ChangeSetError(' There is no source code difference. The changesets might contain binary files and folders only or neutralize themselves.')
         
         return DiffFile(''.join(diff_lines), description)
     
@@ -203,35 +212,31 @@ class SVNDiffTool:
             difflines[2] = unicode('--- ' + fullname + '\t(revision ' + str(rev1) + ')\n')
             difflines[3] = unicode('+++ ' + fullname + '\t(revision ' + str(rev2) + ')\n')            
             return difflines
-            
-            
-            
+                     
                 
-    def _get_diff_of_new_file(self, filename, new_revision):
+    def _get_diff_of_new_file(self, path, new_revision):
         # is same like diff with empty content
-        rev = Revision(opt_revision_kind.number, new_revision)
-        content = self.tool.client.cat(filename, rev)
+        content = self.tool.get_file(path, new_revision)
         diff_lines = content.splitlines(True)
 
         file_len = len(diff_lines)
 
         if not diff_lines[file_len - 1].endswith(u'\n'):
-            diff_lines.append(u'\n\\ No newline at end of content\n')
+            diff_lines.append(u'\n\\ No newline at end of file\n')
 
         for idx in range(0, file_len):
             diff_lines[idx] = u'+' + diff_lines[idx]
             
         diff_lines.insert(0, u'@@ -0,0 +1,%d @@\n' % file_len)     # @@ -R +R @@ with R = l,s with l=line and s=block size in number of lines
-        diff_lines.insert(0, u'+++ %s\t%s;%s\n' % (filename, filename, str(new_revision)))
-        diff_lines.insert(0, u'--- %s\t%s;0\n' % (filename, filename))
+        diff_lines.insert(0, u'+++ %s\t(revision %s)\n' % (path, str(new_revision)))
+        diff_lines.insert(0, u'--- %s\t(revision 0)\n' % (path))
         
         return diff_lines
         
         
-    def _get_diff_of_deleted_file(self, filename, last_revision):
+    def _get_diff_of_deleted_file(self, path, last_revision):
         # is same like diff with empty file
-        rev = Revision(opt_revision_kind.number, last_revision)
-        content = self.tool.client.cat(filename, rev)
+        content = self.tool.get_file(path, last_revision)
         diff_lines = content.splitlines(True)
 
         file_len = len(diff_lines)
@@ -242,11 +247,12 @@ class SVNDiffTool:
         for idx in range(0, file_len):
             diff_lines[idx] = u'-' + diff_lines[idx]
 
-        diff_lines.insert(0, u'+' + self.tool.DELETED_FILE + '\n')
+        diff_lines.insert(0, u'+' + self.REMOVED_FILE + '\n')
             
         diff_lines.insert(0, u'@@ -1,%d +1,1 @@\n' % file_len)     # @@ -R +R @@ with R = l,s with l=line and s=block size in number of lines
-        diff_lines.insert(0, u'+++ %s\t%s;0\n' % (filename, filename))
-        diff_lines.insert(0, u'--- %s\t%s;%s\n' % (filename, filename, str(last_revision)))
+
+        diff_lines.insert(0, u'+++ %s\t(revision 0)\n' % (path))
+        diff_lines.insert(0, u'--- %s\t(revision %s)\n' % (path, str(last_revision)))
         
         return diff_lines   
         
