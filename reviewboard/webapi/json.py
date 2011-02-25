@@ -1169,8 +1169,8 @@ def new_diff(request, review_request_id, *args, **kwargs):
         return WebAPIResponseFormError(request, form)
 
     try:
-        diffset = form.create(request.FILES['path'],
-                              request.FILES.get('parent_diff_path'))
+        diffset, description = form.create(request.FILES.get('path'),
+                                           request.FILES.get('parent_diff_path'))
     except FileNotFoundError, e:
         return WebAPIResponseError(request, REPO_FILE_NOT_FOUND, {
             'file': e.path,
@@ -1207,6 +1207,12 @@ def new_diff(request, review_request_id, *args, **kwargs):
             return WebAPIResponseError(request, PERMISSION_DENIED)
 
     draft.diffset = diffset
+    
+    # Modify description
+    if description:
+        # post-commit review
+        draft.description += '--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---\n'
+        draft.description += description
 
     # We only want to add default reviewers the first time.  Was bug 318.
     if review_request.diffset_history.diffsets.count() == 0:

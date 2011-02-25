@@ -1,4 +1,5 @@
 import os
+import re
 
 from django import forms
 from django.utils.encoding import smart_unicode
@@ -7,7 +8,6 @@ from django.utils.translation import ugettext as _
 from reviewboard.diffviewer.diffutils import DEFAULT_DIFF_COMPAT_VERSION
 from reviewboard.diffviewer.models import DiffSet, FileDiff
 from reviewboard.scmtools.core import PRE_CREATION, UNKNOWN, FileNotFoundError
-
 
 class EmptyDiffError(ValueError):
     pass
@@ -31,9 +31,12 @@ class UploadDiffForm(forms.Form):
                     "This is usually used for distributed revision control "
                     "systems (Git, Mercurial, etc.)."),
         required=False)
-    changenum = forms.IntegerField(label=_("Change Number"), 
-                                   help_text=_("The new change set to upload."),
-                                   required=True)
+    revisions = forms.RegexField(regex=r'^([A-F,a-f,0-9]+\s*,{0,1}\s*)+$',
+                                 label=_('List of Revisions'),
+                                 max_length=2048,
+                                 required=True,
+                                 help_text=_('A list of revision identifiers, e.g. 12345 56789 34567'))
+
 
     # Extensions used for intelligent sorting of header files
     # before implementation files.
@@ -47,11 +50,12 @@ class UploadDiffForm(forms.Form):
         tool = self.repository.get_scmtool()
         
         if hasattr(tool, "support_post_commit") and tool.support_post_commit:
+            del(self.fields['basedir'])
             del(self.fields['path'])
             del(self.fields['parent_diff_path'])
-            del(self.fields['basedir'])
+            pass
         else:
-            del(self.fields['changenum'])
+            del(self.fields['revisions'])
             if self.repository.get_scmtool().get_diffs_use_absolute_paths():
                 # This SCMTool uses absolute paths, so there's no need to ask
                 # the user for the base directory.
@@ -60,6 +64,19 @@ class UploadDiffForm(forms.Form):
 
     def create(self, diff_file, parent_diff_file=None, diffset_history=None):
         tool = self.repository.get_scmtool()
+        
+        if diff_file == None:
+            try:
+                # post-commit diff creation
+                revision_list = []
+                split_field = re.split('\s*,{0,1}\s*', self.cleaned_data['revisions'])
+                for number in split_field:
+                    if number.strip() != '':
+                        revision_list.append(int(number))
+                diff_file = tool.get_diff_file(revision_list) 
+                
+            except AttributeError:
+               raise EmptyDiffError(_("No diff file provided"))
 
         # Grab the base directory if there is one.
         if not tool.get_diffs_use_absolute_paths():
@@ -140,7 +157,11 @@ class UploadDiffForm(forms.Form):
                                 status=status)
             filediff.save()
 
-        return diffset
+        # Try to provide a detailed description
+        try:
+            return diffset, diff_file.description
+        except AttributeError:                    
+            return diffset, None
 
     def _process_files(self, file, basedir, check_existance=False):
         tool = self.repository.get_scmtool()

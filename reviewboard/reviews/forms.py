@@ -243,7 +243,7 @@ class UploadDiffForm(diffviewer_forms.UploadDiffForm):
         if attach_to_history:
             history = self.review_request.diffset_history
 
-        diffset = super(UploadDiffForm, self).create(diff_file,
+        diffset, description = super(UploadDiffForm, self).create(diff_file,
                                                      parent_diff_file,
                                                      history)
 
@@ -263,7 +263,7 @@ class UploadDiffForm(diffviewer_forms.UploadDiffForm):
 
             diffset.save()
 
-        return diffset
+        return diffset, description
 
 
 class UploadScreenshotForm(forms.Form):
