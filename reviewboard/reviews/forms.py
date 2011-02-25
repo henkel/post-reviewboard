@@ -304,7 +304,7 @@ class NewPostReviewRequestForm(forms.Form):
         required=False)
     
     # match '23 42 3343' or '23, 34 , 235235'
-    change_numbers = forms.RegexField(regex=r'^([A-F,a-f,0-9]+\s*,{0,1}\s*)+$', 
+    revisions = forms.RegexField(regex=r'^([A-F,a-f,0-9]+\s*,{0,1}\s*)+$', 
                                       label=_('List of Revisions'), 
                                       max_length=2048, 
                                       required=True, 
@@ -346,31 +346,24 @@ class NewPostReviewRequestForm(forms.Form):
         if len(valid_repos) > 1:
             self.fields['repository'].initial = valid_repos[1][0]
 
-    @staticmethod
-    def create_from_list(data, constructor, error):
-        """Helper function to combine the common bits of clean_target_people
-           and clean_target_groups"""
-        names = [x for x in map(str.strip, re.split(',\s*', data)) if x]
-        return set([constructor(name) for name in names])
 
     def create(self, user, diff_file, parent_diff_file):
         repository = self.cleaned_data['repository']
 
-        changenum_list = []
-        changenum_error_field = ''
+        revision_list = []
+        revisions_error_field = ''
         
         fields = repository.get_scmtool().get_fields()
         
-        if 'change_numbers' in fields:
-            changenum_error_field = 'change_numbers'
-            diff_error_field = 'change_numbers'
-            split_field = re.split('\s*,{0,1}\s*', self.cleaned_data['change_numbers'])
+        if 'revisions' in fields:
+            revisions_error_field = 'revisions'
+            split_field = re.split('\s*,{0,1}\s*', self.cleaned_data['revisions'])
             for number in split_field:
                 if number.strip() != '':
-                    changenum_list.append(int(number))
+                    revision_list.append(int(number))
                 
             # Eliminate duplicates    
-            changenum_list = list(set(changenum_list))
+            revision_list = list(set(revision_list))
 
 
         review_request = ReviewRequest.objects.create(user, repository)
@@ -380,20 +373,21 @@ class NewPostReviewRequestForm(forms.Form):
 
             try:
                 # Create diff file 
-                diff_file = tool.get_diff_file(changenum_list) 
+                diff_file = tool.get_diff_file(revision_list) 
             
             except ChangeSetError, e:
                 review_request.delete()
-                self.errors[changenum_error_field] = forms.util.ErrorList("Could not create diff for specified changeset:" + str(e))
+                self.errors[revisions_error_field] = forms.util.ErrorList("Could not create diff for specified revisions: " + str(e))
                 raise
             except Exception, e:
                 review_request.delete()
-                self.errors[changenum_error_field] = forms.util.ErrorList([e])
+                self.errors[revisions_error_field] = forms.util.ErrorList([e])
                 raise            
                 
-            # Replace description
+            # Update summary and description
+            review_request.summary = diff_file.name
             review_request.description = diff_file.description
-            review_request.summary = ' test '
+
            
         if diff_file:
             diff_form = UploadDiffForm(
@@ -412,22 +406,22 @@ class NewPostReviewRequestForm(forms.Form):
             try:
                 diff_form.create(diff_file, None, attach_to_history=True)
                 if 'path' in diff_form.errors:
-                    self.errors[changenum_error_field] = diff_form.errors['path']
+                    self.errors[revisions_error_field] = diff_form.errors['path']
                     raise SavedError
                 elif 'base_diff_path' in diff_form.errors:
-                    self.errors[changenum_error_field] = diff_form.errors['base_diff_path']
+                    self.errors[revisions_error_field] = diff_form.errors['base_diff_path']
                     raise SavedError
             except SavedError:
                 review_request.delete()
                 raise OwnershipError()
             except diffviewer_forms.EmptyDiffError:
                 review_request.delete()
-                self.errors[changenum_error_field] = forms.util.ErrorList([
+                self.errors[revisions_error_field] = forms.util.ErrorList([
                     'The selected file does not appear to be a diff.'])
                 raise    
             except Exception, e:
                 review_request.delete()
-                self.errors[changenum_error_field] = forms.util.ErrorList([e])
+                self.errors[revisions_error_field] = forms.util.ErrorList([e])
                 raise
 
         review_request.add_default_reviewers()

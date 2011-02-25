@@ -26,28 +26,10 @@ class SVNPostCommitTool(SVNTool):
         SVNTool.__init__(self, repository)
     
     def get_fields(self):
-        return ['change_numbers']
+        return ['revisions']
     
     def get_diffs_use_absolute_paths(self):
         return True
-    
-#    def get_changeset(self, changesetid):
-#        # TODO is this function really needed????
-#        rev = Revision(opt_revision_kind.number, changesetid)
-#        logs = self.client.log(self.repopath, rev, rev, True)
-#        
-#        if len(logs) != 1:
-#            return None
-#
-#        changeset = ChangeSet()
-#        changeset.changenum = changesetid
-#        changeset.username = logs[0].author
-#        changeset.description = logs[0].message or ''
-#        changeset.summary = changeset.description.split('\n', 1)[0]  # summary is first line of description
-#        # TODO files plus actions changeset.files =      logs[0]['changed_paths']]
-#        
-#        return changeset
-
 
     def get_diff_file(self, revision_list):
         if revision_list == None or len(revision_list) == 0:
@@ -55,6 +37,11 @@ class SVNPostCommitTool(SVNTool):
         return SVNDiffTool(self).get_diff_file(revision_list)
     
     def get_revision_info(self, revision):
+        cache_key = 'svn_post_get_revision_info.' + str(revision)
+        res = cache.get(cache_key)
+        if res != None:
+            return res
+        
         rev = Revision(opt_revision_kind.number, revision)
         logs = self.client.log(self.repopath, rev, rev, True)
         
@@ -68,6 +55,8 @@ class SVNPostCommitTool(SVNTool):
                     'description':logs[0].message or '', 
                     'changes':changed_paths, 
                     'date':logs[0].date}
+        
+        cache.set(cache_key, revision)
         return revision
     
     def is_file(self, path, revision):
@@ -106,10 +95,11 @@ class SVNPostCommitTool(SVNTool):
     
     
 class DiffFile:
-    def __init__(self, data, description):
-        self.data = data
-        self.name = 'SVN Post Commit Diff' 
+    def __init__(self, name, description, data):
+        self.name = name
         self.description = description
+        self.data = data
+
         
     def read(self):
         return self.data
@@ -199,6 +189,15 @@ class SVNDiffTool:
 
         try:
             revision_list.sort()
+            
+            if len(revision_list) != 1:
+                summary = ''  # user should give a summary
+            else:
+                revInfo = self.tool.get_revision_info(revision_list[0])
+                desc = revInfo['description'].splitlines(True)
+                if len(desc) > 0:
+                    summary = desc[0]
+                
 
             # Determine list of modified files including a modification status
             modified_paths = {}
@@ -234,17 +233,17 @@ class SVNDiffTool:
                                 raise
                 
                 except Exception, e:
-                    raise ChangeSetError('Problem with ' + path +': '+ str(e))
+                    raise ChangeSetError(' Problem with ' + path +': '+ str(e))
         
             os.rmdir(temp_dir_name)
             
         except Exception, e:
-            raise ChangeSetError('Error creating diff: ' + str(e) )
+            raise ChangeSetError(' Error creating diff: ' + str(e) )
         
         if len(diff_lines) < 3:
             raise ChangeSetError(' There is no source code difference. The changesets might contain binary files and folders only or neutralize themselves.')
         
-        return DiffFile(''.join(diff_lines), description)
+        return DiffFile(summary, description, ''.join(diff_lines))
     
     
     def _expand_filename(self, diff, fullname, rev1, rev2):
@@ -321,10 +320,14 @@ class SVNDiffTool:
         submit_date = datetime.datetime.fromtimestamp(revInfo['date'])        
         time_str = submit_date.strftime("%Y-%m-%d %I:%M %p")
 
-        description =  'Change ' + str(revision) + ' by ' + revInfo['user'] + ' on ' + time_str +'\n'
+        description =  str(revision) + ' by ' + revInfo['user'] + ' on ' + time_str +'\n'
+        indent = ''
+        for idx in range(1 + len(str(revision))):
+            indent += ' '
+            
         desclines = revInfo['description'].splitlines(True)
         for line in desclines:
-            description += '       ' + line
+            description += indent + line
         description += '\n\n\n'
         
         return description
