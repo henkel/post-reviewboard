@@ -328,7 +328,7 @@ class SVNDiffTool:
         desclines = revInfo['description'].splitlines(True)
         for line in desclines:
             description += indent + line
-        description += '\n\n\n'
+        description += '\n\n'
         
         return description
     
