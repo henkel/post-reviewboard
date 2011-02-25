@@ -297,34 +297,18 @@ class NewPostReviewRequestForm(forms.Form):
     """
     NO_REPOSITORY_ENTRY = _('(None - Graphics only)')
 
-    basedir = forms.CharField(
-        label=_("Base Directory"),
-        required=False,
-        help_text=_("The absolute path in the repository the diff was "
-                    "generated in."),
-        widget=forms.TextInput(attrs={'size': '35'}))
-    diff_path = forms.FileField(
-        label=_("Diff"),
-        required=False,
-        help_text=_("The new diff to upload."),
-        widget=forms.FileInput(attrs={'size': '35'}))
-    parent_diff_path = forms.FileField(
-        label=_("Parent Diff"),
-        required=False,
-        help_text=_("An optional diff that the main diff is based on. "
-                    "This is usually used for distributed revision control "
-                    "systems (Git, Mercurial, etc.)."),
-        widget=forms.FileInput(attrs={'size': '35'}))
     repository = forms.ModelChoiceField(
         label=_("Repository"),
         queryset=Repository.objects.filter(visible=True).order_by('name'),
         empty_label=NO_REPOSITORY_ENTRY,
         required=False)
-
-    changenum = forms.IntegerField(label=_("Change Number"), required=False)
     
     # match '23 42 3343' or '23, 34 , 235235'
-    change_numbers = forms.RegexField(regex=r'^([0-9]+\s*,{0,1}\s*)+$', label=_("Change Numbers"), max_length=2048, required=False, help_text=_("A list of commit identifiers, e.g. 12345 56789 34567"))
+    change_numbers = forms.RegexField(regex=r'^([A-F,a-f,0-9]+\s*,{0,1}\s*)+$', 
+                                      label=_('List of Revisions'), 
+                                      max_length=2048, 
+                                      required=True, 
+                                      help_text=_('A list of revision identifiers, e.g. 12345 56789 34567'))
 
 
     field_mapping = {}
@@ -371,7 +355,6 @@ class NewPostReviewRequestForm(forms.Form):
 
     def create(self, user, diff_file, parent_diff_file):
         repository = self.cleaned_data['repository']
-        changenum = self.cleaned_data['changenum'] or None
 
         changenum_list = []
         changenum_error_field = ''
@@ -388,57 +371,9 @@ class NewPostReviewRequestForm(forms.Form):
                 
             # Eliminate duplicates    
             changenum_list = list(set(changenum_list))
-        
-        changenum_list.sort()
-        
-        if len(changenum_list) > 0:
-            changenum = int(changenum_list[0])
-        else:
-            changenum = self.cleaned_data['changenum'] or None
-                
-        # It's a little odd to validate this here, but we want to have access to
-        # the user.
-        if changenum:
-            changeset = None
-            try:
-                changeset = repository.get_scmtool().get_changeset(changenum)
-            except NotImplementedError:
-                # This scmtool doesn't have changesets
-                pass
-            except ChangeSetError, e:
-                self.errors[diff_error_field] = forms.util.ErrorList([str(e)])
-                raise e
-            except SCMError, e:
-                self.errors[diff_error_field] = forms.util.ErrorList([str(e)])
-                raise ChangeSetError()
 
-            if not changeset:
-                self.errors[diff_error_field] = forms.util.ErrorList([
-                    'This change number does not represent a valid '
-                    'changeset.'])
-                raise InvalidChangeNumberError()
 
-            if user.username != changeset.username:
-                self.errors[diff_error_field] = forms.util.ErrorList([
-                    'This change number is owned by another user.'])
-                raise OwnershipError()
-
-        try:
-            review_request = ReviewRequest.objects.create(user, repository,
-                                                          changenum)
-        except ChangeNumberInUseError:
-            # The user is updating an existing review request, rather than
-            # creating a new one.
-            review_request = ReviewRequest.objects.get(changenum=changenum)
-            review_request.update_from_changenum(changenum)
-
-            if review_request.status == 'D':
-                # Act like we're creating a brand new review request if the
-                # old one is discarded.
-                review_request.status = 'P'
-                review_request.public = False
-
-            review_request.save()
+        review_request = ReviewRequest.objects.create(user, repository)
 
         if diff_file == None:
             tool = repository.get_scmtool()
@@ -458,16 +393,13 @@ class NewPostReviewRequestForm(forms.Form):
                 
             # Replace description
             review_request.description = diff_file.description
+            review_request.summary = ' test '
            
         if diff_file:
             diff_form = UploadDiffForm(
                 review_request,
-                data={
-                    'basedir': self.cleaned_data['basedir'],
-                },
                 files={
                     'path': diff_file,
-                    'parent_diff_path': parent_diff_file,
                 })
             diff_form.full_clean()
 
@@ -478,8 +410,7 @@ class NewPostReviewRequestForm(forms.Form):
                 pass
 
             try:
-                diff_form.create(diff_file, parent_diff_file,
-                                 attach_to_history=True)
+                diff_form.create(diff_file, None, attach_to_history=True)
                 if 'path' in diff_form.errors:
                     self.errors[changenum_error_field] = diff_form.errors['path']
                     raise SavedError

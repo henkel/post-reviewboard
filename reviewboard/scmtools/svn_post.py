@@ -1,4 +1,5 @@
-
+# SVN post-commit SCM tool
+# Author: Philipp Henkel, weltraumpilot@googlemail.com
 
 from reviewboard.scmtools.errors import SCMError, ChangeSetError, \
     EmptyChangeSetError
@@ -9,11 +10,12 @@ import os
 import pysvn
 import tempfile
 
-
 try:
     from pysvn import Revision, opt_revision_kind
 except ImportError:
     pass
+
+from django.core.cache import cache
 
 
 
@@ -29,22 +31,22 @@ class SVNPostCommitTool(SVNTool):
     def get_diffs_use_absolute_paths(self):
         return True
     
-    def get_changeset(self, changesetid):
-        # TODO is this function really needed????
-        rev = Revision(opt_revision_kind.number, changesetid)
-        logs = self.client.log(self.repopath, rev, rev, True)
-        
-        if len(logs) != 1:
-            return None
-
-        changeset = ChangeSet()
-        changeset.changenum = changesetid
-        changeset.username = logs[0].author
-        changeset.description = logs[0].message or ''
-        changeset.summary = changeset.description.split('\n', 1)[0]  # summary is first line of description
-        # TODO files plus actions changeset.files =      logs[0]['changed_paths']]
-        
-        return changeset
+#    def get_changeset(self, changesetid):
+#        # TODO is this function really needed????
+#        rev = Revision(opt_revision_kind.number, changesetid)
+#        logs = self.client.log(self.repopath, rev, rev, True)
+#        
+#        if len(logs) != 1:
+#            return None
+#
+#        changeset = ChangeSet()
+#        changeset.changenum = changesetid
+#        changeset.username = logs[0].author
+#        changeset.description = logs[0].message or ''
+#        changeset.summary = changeset.description.split('\n', 1)[0]  # summary is first line of description
+#        # TODO files plus actions changeset.files =      logs[0]['changed_paths']]
+#        
+#        return changeset
 
 
     def get_diff_file(self, revision_list):
@@ -52,6 +54,55 @@ class SVNPostCommitTool(SVNTool):
             raise ChangeSetError('List of revisions is empty')
         return SVNDiffTool(self).get_diff_file(revision_list)
     
+    def get_revision_info(self, revision):
+        rev = Revision(opt_revision_kind.number, revision)
+        logs = self.client.log(self.repopath, rev, rev, True)
+        
+        if len(logs) != 1:
+            raise ChangeSetError('Revision ' + str(revision) +' not found')
+        
+        changed_paths = self._reduceToTextFiles(logs[0].changed_paths, revision)
+        
+        revision = {'revision': revision, 
+                    'user': logs[0].author or '', 
+                    'description':logs[0].message or '', 
+                    'changes':changed_paths, 
+                    'date':logs[0].date}
+        return revision
+    
+    def is_file(self, path, revision):
+        cache_key = 'svn_post_is_file.' + path   # revision is ignored because a change in file type is considered to happen only very seldom
+        res = cache.get(cache_key)
+        
+        if res != None:
+            return res
+        
+        rev = Revision(opt_revision_kind.number, revision)
+        
+        entry = self.client.info2(self.repopath+path, revision=rev)
+        if entry[0][1]['kind'] != pysvn.node_kind.file:
+            cache.set(cache_key, False)
+            return False
+
+        property = self.client.propget('svn:mime-type', self.repopath+path, rev)
+        if len(property) > 0:
+            if 'application/octet-stream' in property.values():
+                cache.set(cache_key, False)
+                return False
+        
+        cache.set(cache_key, True)    
+        return True
+
+    
+    def _reduceToTextFiles(self, changed_paths, revision):
+        filtered = []
+        for cpath in changed_paths:
+            rev = revision
+            if cpath['action'] == 'D':
+                rev = rev - 1
+            if self.is_file(cpath['path'], rev):
+                filtered.append(cpath) 
+        return filtered
     
     
 class DiffFile:
@@ -152,7 +203,7 @@ class SVNDiffTool:
             # Determine list of modified files including a modification status
             modified_paths = {}
             for revision in revision_list:
-                description += unicode(self.merge_revision_into_list_of_modified_files(revision, modified_paths))
+                description += unicode(self._merge_revision_into_list_of_modified_files(revision, modified_paths))
             
             temp_dir_name = tempfile.mkdtemp(prefix='reviewboard_svn_post.')    
                 
@@ -161,32 +212,26 @@ class SVNDiffTool:
                 try:                 
                     status = modified_paths[path]
                 
-                    try:
-                        if status.change_type == DiffStatus.ADDED:
-                            diff_lines += self._get_diff_of_new_file(path, status.last_rev)
-        
-                        elif status.change_type == DiffStatus.DELETED:
-                            diff_lines += self._get_diff_of_deleted_file(path, status.first_rev)
-                                
-                        else: # MODIFIED
-                            dummy = self.tool.get_file(path, status.last_rev) # prevent processing of directories
-                            rev1 = Revision(opt_revision_kind.number, status.first_rev)
-                            rev2 = Revision(opt_revision_kind.number, status.last_rev)
-                            try:
-                                diff = self.tool.client.diff(temp_dir_name, self.tool.repopath + path, revision1=rev1, revision2=rev2)
-                                expanded_diff = self._expand_filename(diff, path, status.first_rev, status.last_rev)
-                                diff_lines += expanded_diff
-                            except pysvn.ClientError, e:
-                                if str(e).find('was not found in the repository at revision') != -1:
-                                    # Looks like we have special case here, e.g. replacing and renaming at the same time
-                                    diff_lines += self._get_diff_of_new_file(path, status.last_rev)
-                                else:
-                                    raise
-                    except Exception, e:
-                        if str(e).find('refers to a directory') != -1:
-                            pass  # we ignore all directory modifications
-                        else:
-                            raise
+
+                    if status.change_type == DiffStatus.ADDED:
+                        diff_lines += self._get_diff_of_new_file(path, status.last_rev)
+    
+                    elif status.change_type == DiffStatus.DELETED:
+                        diff_lines += self._get_diff_of_deleted_file(path, status.first_rev)
+                            
+                    else: # MODIFIED
+                        rev1 = Revision(opt_revision_kind.number, status.first_rev)
+                        rev2 = Revision(opt_revision_kind.number, status.last_rev)
+                        try:
+                            diff = self.tool.client.diff(temp_dir_name, self.tool.repopath + path, revision1=rev1, revision2=rev2)
+                            expanded_diff = self._expand_filename(diff, path, status.first_rev, status.last_rev)
+                            diff_lines += expanded_diff
+                        except pysvn.ClientError, e:
+                            if str(e).find('was not found in the repository at revision') != -1:
+                                # Looks like we have special case here, e.g. replacing and renaming at the same time
+                                diff_lines += self._get_diff_of_new_file(path, status.last_rev)
+                            else:
+                                raise
                 
                 except Exception, e:
                     raise ChangeSetError('Problem with ' + path +': '+ str(e))
@@ -255,26 +300,11 @@ class SVNDiffTool:
         diff_lines.insert(0, u'--- %s\t(revision %s)\n' % (path, str(last_revision)))
         
         return diff_lines   
-        
-    def get_revision_info(self, revision):
-        # TODO is this function really needed????
-        rev = Revision(opt_revision_kind.number, revision)
-        logs = self.tool.client.log(self.tool.repopath, rev, rev, True)
-        
-        if len(logs) != 1:
-            raise ChangeSetError('Revision ' + str(revision) +' not found')
-        
-        revision = {'revision': revision, 
-                    'user': logs[0].author or '', 
-                    'description':logs[0].message or '', 
-                    'changes':logs[0].changed_paths, 
-                    'date':logs[0].date}
-        return revision
 
 
-    def merge_revision_into_list_of_modified_files(self, revision, modified_files):
+    def _merge_revision_into_list_of_modified_files(self, revision, modified_files):
 
-        revInfo = self.get_revision_info(revision)
+        revInfo = self.tool.get_revision_info(revision)
             
         if len(revInfo['changes']) == 0:
             raise EmptyChangeSetError(revision)
