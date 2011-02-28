@@ -1,10 +1,8 @@
 # SVN post-commit SCM tool
 # Author: Philipp Henkel, weltraumpilot@googlemail.com
 
-from reviewboard.scmtools.errors import SCMError, ChangeSetError, \
-    EmptyChangeSetError
+from reviewboard.scmtools.errors import SCMError
 from reviewboard.scmtools.svn import SVNTool
-from scmtools.core import ChangeSet
 import datetime
 import os
 import pysvn
@@ -33,7 +31,7 @@ class SVNPostCommitTool(SVNTool):
 
     def get_diff_file(self, revision_list):
         if revision_list == None or len(revision_list) == 0:
-            raise ChangeSetError('List of revisions is empty')
+            raise SCMError('List of revisions is empty')
         return SVNDiffTool(self).get_diff_file(revision_list)
     
     def get_revision_info(self, revision):
@@ -46,7 +44,7 @@ class SVNPostCommitTool(SVNTool):
         logs = self.client.log(self.repopath, rev, rev, True)
         
         if len(logs) != 1:
-            raise ChangeSetError('Revision ' + str(revision) +' not found')
+            raise SCMError('Revision ' + str(revision) +' not found')
         
         changed_paths = self._reduceToTextFiles(logs[0].changed_paths, revision)
         
@@ -138,7 +136,7 @@ class DiffStatus:
         new_rev = int(new_rev)
         
         if (new_rev <= self.last_rev):
-            raise ChangeSetError('Please apply diff updates in order of change lists and do not apply a diff twice')
+            raise SCMError('Please apply diff updates in order of change lists and do not apply a diff twice')
         
         self.last_rev = new_rev
 
@@ -233,15 +231,15 @@ class SVNDiffTool:
                                 raise
                 
                 except Exception, e:
-                    raise ChangeSetError(' Problem with ' + path +': '+ str(e))
+                    raise SCMError(' Problem with ' + path +': '+ str(e))
         
             os.rmdir(temp_dir_name)
             
         except Exception, e:
-            raise ChangeSetError(' Error creating diff: ' + str(e) )
+            raise SCMError(' Error creating diff: ' + str(e) )
         
         if len(diff_lines) < 3:
-            raise ChangeSetError(' There is no source code difference. The changesets might contain binary files and folders only or neutralize themselves.')
+            raise SCMError(' There is no source code difference. The changesets might contain binary files and folders only or neutralize themselves.')
         
         return DiffFile(summary, description, ''.join(diff_lines))
     
@@ -306,7 +304,7 @@ class SVNDiffTool:
         revInfo = self.tool.get_revision_info(revision)
             
         if len(revInfo['changes']) == 0:
-            raise EmptyChangeSetError(revision)
+            return ''  # skip revision
 
         for change in revInfo['changes']:
             action = change['action']
@@ -322,7 +320,7 @@ class SVNDiffTool:
 
         description =  str(revision) + ' by ' + revInfo['user'] + ' on ' + time_str +'\n'
         indent = ''
-        for idx in range(1 + len(str(revision))):
+        for _ in range(1 + len(str(revision))):
             indent += ' '
             
         desclines = revInfo['description'].splitlines(True)
