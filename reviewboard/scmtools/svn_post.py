@@ -3,10 +3,12 @@
 
 from reviewboard.scmtools.errors import SCMError
 from reviewboard.scmtools.svn import SVNTool
+from reviewboard.scmtools.core import HEAD
 import datetime
 import os
 import pysvn
 import tempfile
+import urllib
 
 try:
     from pysvn import Revision, opt_revision_kind
@@ -16,6 +18,29 @@ except ImportError:
 from django.core.cache import cache
 
 
+def to_unicode(str, replace=False):
+    return str
+#    if isinstance(str, unicode):
+#        return str
+#    elif isinstance(str, basestring):
+#        try:
+#            u = unicode(str, 'utf-8')
+#            return u
+#        except UnicodeError:
+#            try:
+#                # try iso-8859-15
+#                u = unicode(str, 'iso-8859-15')
+#                return u.encode('utf-8')
+#            except UnicodeError:
+#                if replace == True:
+#                    u = unicode(str, 'utf-8', errors='replace')
+#                    return u
+#        except Exception:
+#            raise Exception(("Cannot convert to UTF-8: %str") % str)
+#    else:
+#        raise TypeError("Cannot convert type %str to UTF-8", type(str))
+    
+    
 
 class SVNPostCommitTool(SVNTool):
     support_post_commit = True
@@ -28,6 +53,10 @@ class SVNPostCommitTool(SVNTool):
     
     def get_diffs_use_absolute_paths(self):
         return True
+    
+    def get_file(self, path, revision=HEAD):
+        content = SVNTool.get_file(self, path, revision)
+        return to_unicode(content)
 
     def get_diff_file(self, revision_list):
         if revision_list == None or len(revision_list) == 0:
@@ -50,7 +79,7 @@ class SVNPostCommitTool(SVNTool):
         
         revision = {'revision': revision, 
                     'user': logs[0].author or '', 
-                    'description':logs[0].message or '', 
+                    'description':to_unicode(logs[0].message or ''), 
                     'changes':changed_paths, 
                     'date':logs[0].date}
         
@@ -58,7 +87,8 @@ class SVNPostCommitTool(SVNTool):
         return revision
     
     def is_file(self, path, revision):
-        cache_key = 'svn_post_is_file.' + path   # revision is ignored because a change in file type is considered to happen only very seldom
+        quoted_path = urllib.quote(path)
+        cache_key = 'svn_post_is_file.' + quoted_path   # revision is ignored because a change in file type is considered to happen only very seldom
         res = cache.get(cache_key)
         
         if res != None:
@@ -66,12 +96,12 @@ class SVNPostCommitTool(SVNTool):
         
         rev = Revision(opt_revision_kind.number, revision)
         
-        entry = self.client.info2(self.repopath+path, revision=rev)
+        entry = self.client.info2(self.repopath+quoted_path, revision=rev)
         if entry[0][1]['kind'] != pysvn.node_kind.file:
             cache.set(cache_key, False)
             return False
 
-        property = self.client.propget('svn:mime-type', self.repopath+path, rev)
+        property = self.client.propget('svn:mime-type', self.repopath+quoted_path, rev)
         if len(property) > 0:
             if 'application/octet-stream' in property.values():
                 cache.set(cache_key, False)
@@ -182,7 +212,7 @@ class SVNDiffTool:
 
     # Creates a diff file based on a SVN revisions
     def get_diff_file(self, revision_list):
-        description = u''
+        description = ''
         diff_lines = []
 
         try:
@@ -200,7 +230,7 @@ class SVNDiffTool:
             # Determine list of modified files including a modification status
             modified_paths = {}
             for revision in revision_list:
-                description += unicode(self._merge_revision_into_list_of_modified_files(revision, modified_paths))
+                description += self._merge_revision_into_list_of_modified_files(revision, modified_paths)
             
             temp_dir_name = tempfile.mkdtemp(prefix='reviewboard_svn_post.')    
                 
@@ -220,7 +250,8 @@ class SVNDiffTool:
                         rev1 = Revision(opt_revision_kind.number, status.first_rev)
                         rev2 = Revision(opt_revision_kind.number, status.last_rev)
                         try:
-                            diff = self.tool.client.diff(temp_dir_name, self.tool.repopath + path, revision1=rev1, revision2=rev2)
+                            diff = self.tool.client.diff(temp_dir_name, self.tool.repopath + urllib.quote(path), revision1=rev1, revision2=rev2)
+                            diff = to_unicode(diff)
                             expanded_diff = self._expand_filename(diff, path, status.first_rev, status.last_rev)
                             diff_lines += expanded_diff
                         except pysvn.ClientError, e:
@@ -263,38 +294,38 @@ class SVNDiffTool:
 
         file_len = len(diff_lines)
 
-        if not diff_lines[file_len - 1].endswith(u'\n'):
-            diff_lines.append(u'\n\\ No newline at end of file\n')
+        if not diff_lines[file_len - 1].endswith('\n'):
+            diff_lines.append('\n\\ No newline at end of file\n')
 
         for idx in range(0, file_len):
-            diff_lines[idx] = u'+' + diff_lines[idx]
+            diff_lines[idx] = '+' + diff_lines[idx]
             
-        diff_lines.insert(0, u'@@ -0,0 +1,%d @@\n' % file_len)     # @@ -R +R @@ with R = l,s with l=line and s=block size in number of lines
-        diff_lines.insert(0, u'+++ %s\t(revision %s)\n' % (path, str(new_revision)))
-        diff_lines.insert(0, u'--- %s\t(revision 0)\n' % (path))
+        diff_lines.insert(0, '@@ -0,0 +1,%d @@\n' % file_len)     # @@ -R +R @@ with R = l,s with l=line and s=block size in number of lines
+        diff_lines.insert(0, '+++ %s\t(revision %s)\n' % (path, str(new_revision)))
+        diff_lines.insert(0, '--- %s\t(revision 0)\n' % (path))
         
         return diff_lines
         
         
     def _get_diff_of_deleted_file(self, path, last_revision):
         # is same like diff with empty file
-        content = self.tool.get_file(path, last_revision)
+        content = self.tool.get_file(urllib.quote(path), last_revision)
         diff_lines = content.splitlines(True)
 
         file_len = len(diff_lines)
        
         if not diff_lines[file_len - 1].endswith(u'\n'):
-            diff_lines.append(u'\n\\ No newline at end of file\n')
+            diff_lines.append('\n\\ No newline at end of file\n')
 
         for idx in range(0, file_len):
-            diff_lines[idx] = u'-' + diff_lines[idx]
+            diff_lines[idx] = '-' + diff_lines[idx]
 
-        diff_lines.insert(0, u'+' + self.REMOVED_FILE + '\n')
+        diff_lines.insert(0, '+' + self.REMOVED_FILE + '\n')
             
-        diff_lines.insert(0, u'@@ -1,%d +1,1 @@\n' % file_len)     # @@ -R +R @@ with R = l,s with l=line and s=block size in number of lines
+        diff_lines.insert(0, '@@ -1,%d +1,1 @@\n' % file_len)     # @@ -R +R @@ with R = l,s with l=line and s=block size in number of lines
 
-        diff_lines.insert(0, u'+++ %s\t(revision 0)\n' % (path))
-        diff_lines.insert(0, u'--- %s\t(revision %s)\n' % (path, str(last_revision)))
+        diff_lines.insert(0, '+++ %s\t(revision 0)\n' % (path))
+        diff_lines.insert(0, '--- %s\t(revision %s)\n' % (path, str(last_revision)))
         
         return diff_lines   
 
@@ -318,7 +349,8 @@ class SVNDiffTool:
         submit_date = datetime.datetime.fromtimestamp(revInfo['date'])        
         time_str = submit_date.strftime("%Y-%m-%d %I:%M %p")
 
-        description =  str(revision) + ' by ' + revInfo['user'] + ' on ' + time_str +'\n'
+        description = str(revision) + ' by ' + revInfo['user'] + ' on ' + time_str +'\n'
+        
         indent = ''
         for _ in range(1 + len(str(revision))):
             indent += ' '
