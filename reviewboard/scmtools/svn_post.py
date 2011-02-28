@@ -39,7 +39,6 @@ class SVNPostCommitTool(SVNTool):
         return SVNDiffTool(self).get_diff_file(revision_list)
     
     def get_revision_info(self, revision):
-        cache.clear()
         cache_key = 'svn_post_get_revision_info.' + str(revision)
         res = cache.get(cache_key)
         if res != None:
