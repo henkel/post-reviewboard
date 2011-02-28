@@ -18,30 +18,6 @@ except ImportError:
 from django.core.cache import cache
 
 
-def to_unicode(str, replace=False):
-    return str
-#    if isinstance(str, unicode):
-#        return str
-#    elif isinstance(str, basestring):
-#        try:
-#            u = unicode(str, 'utf-8')
-#            return u
-#        except UnicodeError:
-#            try:
-#                # try iso-8859-15
-#                u = unicode(str, 'iso-8859-15')
-#                return u.encode('utf-8')
-#            except UnicodeError:
-#                if replace == True:
-#                    u = unicode(str, 'utf-8', errors='replace')
-#                    return u
-#        except Exception:
-#            raise Exception(("Cannot convert to UTF-8: %str") % str)
-#    else:
-#        raise TypeError("Cannot convert type %str to UTF-8", type(str))
-    
-    
-
 class SVNPostCommitTool(SVNTool):
     support_post_commit = True
     
@@ -55,8 +31,7 @@ class SVNPostCommitTool(SVNTool):
         return True
     
     def get_file(self, path, revision=HEAD):
-        content = SVNTool.get_file(self, path, revision)
-        return to_unicode(content)
+        return SVNTool.get_file(self, path, revision)
 
     def get_diff_file(self, revision_list):
         if revision_list == None or len(revision_list) == 0:
@@ -64,6 +39,7 @@ class SVNPostCommitTool(SVNTool):
         return SVNDiffTool(self).get_diff_file(revision_list)
     
     def get_revision_info(self, revision):
+        cache.clear()
         cache_key = 'svn_post_get_revision_info.' + str(revision)
         res = cache.get(cache_key)
         if res != None:
@@ -79,7 +55,7 @@ class SVNPostCommitTool(SVNTool):
         
         revision = {'revision': revision, 
                     'user': logs[0].author or '', 
-                    'description':to_unicode(logs[0].message or ''), 
+                    'description':logs[0].message or '', 
                     'changes':changed_paths, 
                     'date':logs[0].date}
         
@@ -251,7 +227,6 @@ class SVNDiffTool:
                         rev2 = Revision(opt_revision_kind.number, status.last_rev)
                         try:
                             diff = self.tool.client.diff(temp_dir_name, self.tool.repopath + urllib.quote(path), revision1=rev1, revision2=rev2)
-                            diff = to_unicode(diff)
                             expanded_diff = self._expand_filename(diff, path, status.first_rev, status.last_rev)
                             diff_lines += expanded_diff
                         except pysvn.ClientError, e:
@@ -272,7 +247,7 @@ class SVNDiffTool:
         if len(diff_lines) < 3:
             raise SCMError(' There is no source code difference. The changesets might contain binary files and folders only or neutralize themselves.')
         
-        return DiffFile(summary, description, ''.join(diff_lines))
+        return DiffFile(summary, description, str(''.join(diff_lines)))
     
     
     def _expand_filename(self, diff, fullname, rev1, rev2):
@@ -281,9 +256,9 @@ class SVNDiffTool:
         if len(difflines) < 4:
             return difflines
         else:
-            difflines[0] = unicode('Index: ' + fullname + '\n')
-            difflines[2] = unicode('--- ' + fullname + '\t(revision ' + str(rev1) + ')\n')
-            difflines[3] = unicode('+++ ' + fullname + '\t(revision ' + str(rev2) + ')\n')            
+            difflines[0] = 'Index: ' + fullname + '\n'
+            difflines[2] = '--- ' + fullname + '\t(revision ' + str(rev1) + ')\n'
+            difflines[3] = '+++ ' + fullname + '\t(revision ' + str(rev2) + ')\n'          
             return difflines
                      
                 
@@ -314,7 +289,7 @@ class SVNDiffTool:
 
         file_len = len(diff_lines)
        
-        if not diff_lines[file_len - 1].endswith(u'\n'):
+        if not diff_lines[file_len - 1].endswith('\n'):
             diff_lines.append('\n\\ No newline at end of file\n')
 
         for idx in range(0, file_len):
