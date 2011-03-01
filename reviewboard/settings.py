@@ -191,3 +191,6 @@ SESSION_COOKIE_PATH = SITE_ROOT
 
 # The list of directories that will be searched to generate a media serial.
 MEDIA_SERIAL_DIRS = ["admin", "djblets", "rb"]
+
+EMAIL_TAG = '[RB] '
+

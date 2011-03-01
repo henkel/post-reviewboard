@@ -11,6 +11,7 @@ from reviewboard.reviews.signals import review_request_published, \
                                         review_published, reply_published
 from reviewboard.reviews.views import build_diff_comment_fragments
 
+from django.conf import settings
 
 def review_request_published_cb(sender, user, review_request, changedesc,
                                 **kwargs):
@@ -169,6 +170,9 @@ def send_review_mail(user, review_request, subject, in_reply_to,
         'X-ReviewBoard-URL': base_url,
         'X-ReviewRequest-URL': base_url + review_request.get_absolute_url(),
     }
+
+    if hasattr(settings, 'EMAIL_TAG'):
+        subject = settings.EMAIL_TAG + subject
 
     message = SpiffyEmailMessage(subject.strip(), text_body, html_body,
                                  from_email, list(to_field), list(cc_field),
