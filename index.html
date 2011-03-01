@@ -8,7 +8,7 @@
   <style type="text/css">
     body {
       margin-top: 1.0em;
-      background-color: #daee34;
+      background-color: #9fc0f6;
       font-family: "Helvetica,Arial,FreeSans";
       color: #000000;
     }
@@ -16,12 +16,12 @@
       margin: 0 auto;
       width: 700px;
     }
-    h1 { font-size: 3.8em; color: #2511cb; margin-bottom: 3px; }
+    h1 { font-size: 3.8em; color: #103674; margin-bottom: 3px; }
     h1 .small { font-size: 0.4em; }
     h1 a { text-decoration: none }
-    h2 { font-size: 1.5em; color: #2511cb; }
-    h3 { text-align: center; color: #2511cb; }
-    a { color: #2511cb; }
+    h2 { font-size: 1.5em; color: #103674; }
+    h3 { text-align: center; color: #103674; }
+    a { color: #103674; }
     .description { font-size: 1.2em; margin-bottom: 30px; margin-top: 30px; font-style: italic;}
     .download { float: right; }
     pre { background: #000; color: #fff; padding: 15px;}
@@ -35,32 +35,74 @@
 
   <div id="container">
 
-    <div class="download">
-      <a href="http://github.com/philipphenkel/post-reviewboard/zipball/master">
-        <img border="0" width="90" src="http://github.com/images/modules/download/zip.png"></a>
-      <a href="http://github.com/philipphenkel/post-reviewboard/tarball/master">
-        <img border="0" width="90" src="http://github.com/images/modules/download/tar.png"></a>
-    </div>
-
     <h1><a href="http://github.com/philipphenkel/post-reviewboard">post-reviewboard</a>
       <span class="small">by <a href="http://github.com/philipphenkel">philipphenkel</a></span></h1>
 
     <div class="description">
-      Review Board is a powerful web-based code review tool. This project adds post-commit functionality.
+      Review Board is a powerful web-based code review tool with focus on pre-commit reviews. My project seamlessly integrates post-commit functionality for Subversion.
     </div>
 
-    <p>Subversion is fully supported. 
-Perforce, TFS code is available on request.</p><h2>Authors</h2>
-<p>Ben Hollis (bhollis@amazon.com)<br/>Christian Hammond (chipx86@chipx86.com)<br/>Crystal Lok Koo (crystal.koo@gmail.com)<br/>Hongbin Lu (cse72022@cse.yorku.ca)<br/>Dick Porter (dporter@codicesoftware.com)<br/>Edu Felipe (eduardofelipe87@gmail.com)<br/>Eduardo Felipe Castegnaro (edufelipe@inf.ufsc.br)<br/>Helder Ribeiro (helder@gmail.com)<br/>Jan Koprowski (jan.koprowski@gmail.com)<br/>Severin Gehwolf (jerboaa@gmail.com)<br/>Kevin Quinn (kfjquinn@gmail.com)<br/>Lance Hudson (lance@lancehudson.com)<br/>Markus Knittig (markus@myd0.de)<br/>Gustavo Narea (me@gustavonarea.net)<br/>Mike Conley (mike.d.conley@gmail.com)<br/>Mikhail Rogozhin (mikhail.rogozhin@gmail.com)<br/>Mike Stoddart (stodge@gmail.com)<br/>David Trowbridge (trowbrds@gmail.com)<br/>Philipp Henkel (weltraumpilot@googlemail.com)<br/><br/>      </p>
-<h2>Contact</h2>
-<p>Philipp Henkel (weltraumpilot@googlemail.com)<br/>      </p>
 
+<h2>Next Steps</h2>
+<p>
+<ul>
+  <li>SCM tool: track list of commits without review request</li>
+  <li>User interface: Create requests by selecting user-specific commits from list</li>
+  <li>Integrate post feature from branch release-1.5.x with master</li>
+  <li>Support more SCM tools, e.g. Perforce, TFS</li>
+</ul>
+<br>
+</p>
+
+
+<h2>Screenshots</h2>
+<p>
+	<img style="border: 0;" src="screenshot.png" alt="Create post-commit request" />
+<br/>      
+</p
+
+<h2>Need Help</h2>
+<p>In 2009 implemented Perforce post-commit support. In 2010 I integrated Microsoft TFS. However, I did not publish my changes at that time and now I don't use these SCM systems any longer. I think it is not much work to make my old SCM implementations run with post-reviewboard. I'm looking for contributors which would like to adapt the code and test it in real-life scenarios.
+<br>
+</p>
+
+<h2>Authors</h2>
+<p>Ben Hollis
+<br/>Christian Hammond
+<br/>Crystal Lok Koo
+<br/>Hongbin Lu
+<br/>Dick Porter
+<br/>Edu Felipe
+<br/>Eduardo Felipe Castegnaro
+<br/>Helder Ribeiro
+<br/>Jan Koprowski
+<br/>Severin Gehwolf
+<br/>Kevin Quinn
+<br/>Lance Hudson
+<br/>Markus Knittig
+<br/>Gustavo Narea
+<br/>Mike Conley
+<br/>Mikhail Rogozhin
+<br/>Mike Stoddart
+<br/>David Trowbridge
+<br/>Philipp Henkel
+<br/>
+<br/>      </p>
+<h2>Contact</h2>
+<p>Philipp Henkel (weltraumpilot at google mail.com)
+<br/>      </p>
+
+<h2>License</h2>
+<p>
+Review Board is under the MIT license, which basically means you are free to do as you want. You must however keep the software under the MIT license.
+Review Board is absolutely free for commercial use.  
+<br/>      </p>
 
     <h2>Download</h2>
     <p>
       You can download this project in either
-      <a href="http://github.com/philipphenkel/post-reviewboard/zipball/master">zip</a> or
-      <a href="http://github.com/philipphenkel/post-reviewboard/tarball/master">tar</a> formats.
+      <a href="http://github.com/philipphenkel/post-reviewboard/zipball/release-1.5.x">zip</a> or
+      <a href="http://github.com/philipphenkel/post-reviewboard/tarball/release-1.5.x">tar</a> formats.
     </p>
     <p>You can also clone the project with <a href="http://git-scm.com">Git</a>
       by running:
