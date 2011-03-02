@@ -199,7 +199,7 @@ class SVNDiffTool:
                 revInfo = self.tool.get_revision_info(revision_list[0])
                 desc = revInfo['description'].splitlines(True)
                 if len(desc) > 0:
-                    summary = desc[0]
+                    summary = desc[0].strip()
                 
 
             # Determine list of modified files including a modification status
