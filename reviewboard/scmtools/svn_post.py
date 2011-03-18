@@ -51,15 +51,16 @@ class SVNPostCommitTool(SVNTool):
             raise SCMError('Revision ' + str(revision) +' not found')
         
         changed_paths = self._reduceToTextFiles(logs[0].changed_paths, revision)
+        changes = self._normalize(changed_paths)
         
-        revision = {'revision': revision, 
-                    'user': logs[0].author or '', 
-                    'description':logs[0].message or '', 
-                    'changes':changed_paths, 
-                    'date':logs[0].date}
+        revisionInfo = {'revision': revision, 
+                        'user': logs[0].author or '', 
+                        'description':logs[0].message or '', 
+                        'changes':changes, 
+                        'date':logs[0].date}
         
-        cache.set(cache_key, revision)
-        return revision
+        cache.set(cache_key, revisionInfo)
+        return revisionInfo
     
     def is_file(self, path, revision):
         quoted_path = urllib.quote(path)
@@ -96,6 +97,12 @@ class SVNPostCommitTool(SVNTool):
                 filtered.append(cpath) 
         return filtered
     
+    
+    def _normalize(self, changed_paths):
+        normalized = []
+        for cpath in changed_paths:
+            normalized.append({'path':cpath['path'], 'action': cpath['action']} ) 
+        return normalized
     
 class DiffFile:
     def __init__(self, name, description, data):
@@ -219,7 +226,8 @@ class SVNDiffTool:
                         diff_lines += self._get_diff_of_new_file(path, status.last_rev)
     
                     elif status.change_type == DiffStatus.DELETED:
-                        diff_lines += self._get_diff_of_deleted_file(path, status.first_rev)
+                        if status.first_rev != 0:  # we ignore new files that were deleted again
+                            diff_lines += self._get_diff_of_deleted_file(path, status.first_rev)
                             
                     else: # MODIFIED
                         rev1 = Revision(opt_revision_kind.number, status.first_rev)
