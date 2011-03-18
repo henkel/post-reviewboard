@@ -19,6 +19,7 @@ from django.core.cache import cache
 
 
 class SVNPostCommitTool(SVNTool):
+    name = "Subversion Post Commit"
     support_post_commit = True
     
     def __init__(self, repository):
