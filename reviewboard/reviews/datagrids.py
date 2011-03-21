@@ -300,6 +300,31 @@ class PendingCountColumn(Column):
         return str(getattr(obj, self.field_name).filter(public=True,
                                                         status='P').count())
 
+class PeopleColumn(Column):
+    def __init__(self, *args, **kwargs):
+        Column.__init__(self, *args, **kwargs)
+        self.label = _("People")
+        self.detailed_label = _("Review People")
+        self.sortable = False
+        self.shrink = False
+
+    def render_data(self, review_request):
+        people = review_request.target_people.all()       
+        return reduce(lambda a,d: a+d.username+' ', people, '')
+
+    
+class GroupsColumn(Column):
+    def __init__(self, *args, **kwargs):
+        Column.__init__(self, *args, **kwargs)
+        self.label = _("Groups")
+        self.detailed_label = _("Review Groups")
+        self.sortable = False
+        self.shrink = False
+
+    def render_data(self, review_request):
+        groups = review_request.target_groups.all()  
+        return reduce(lambda a,d: a+d.name+' ', groups, '')
+
 
 class GroupMemberCountColumn(Column):
     """
@@ -458,6 +483,8 @@ class DashboardDataGrid(ReviewRequestDataGrid):
     """
     new_updates = NewUpdatesColumn()
     my_comments = MyCommentsColumn()
+    target_groups = GroupsColumn()
+    target_people = PeopleColumn()
 
     def __init__(self, *args, **kwargs):
         ReviewRequestDataGrid.__init__(self, *args, **kwargs)
