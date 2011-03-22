@@ -18,7 +18,14 @@ Changes
 {{change_text}}
 {% endif %}
 
-Summary{% if changes %}{% if changes.summary or changes.description %} (updated){% endif %}{% endif %}
+{% if changes %}{% if changes.summary %}
+Summary (updated)
+-------
+
+{{ review_request.summary }}
+{% endif %}{% endif %}
+
+Description{% if changes %}{% if changes.description %} (updated){% endif %}{% endif %}
 -------
 
 {{ review_request.description }}
