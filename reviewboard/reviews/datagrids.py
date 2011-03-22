@@ -425,6 +425,9 @@ class ReviewRequestDataGrid(DataGrid):
 
     review_id = Column(_("Review ID"), field_name="id", db_field="id",
                        shrink=True, sortable=True, link=True)
+    
+    target_groups = GroupsColumn()
+    target_people = PeopleColumn()
 
     def __init__(self, *args, **kwargs):
         DataGrid.__init__(self, *args, **kwargs)
@@ -483,8 +486,7 @@ class DashboardDataGrid(ReviewRequestDataGrid):
     """
     new_updates = NewUpdatesColumn()
     my_comments = MyCommentsColumn()
-    target_groups = GroupsColumn()
-    target_people = PeopleColumn()
+    
 
     def __init__(self, *args, **kwargs):
         ReviewRequestDataGrid.__init__(self, *args, **kwargs)
