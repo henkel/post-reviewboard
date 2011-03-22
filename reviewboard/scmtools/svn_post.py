@@ -204,6 +204,7 @@ class SVNDiffTool:
             if len(revision_list) != 1:
                 summary = ''  # user should give a summary
             else:
+                # Use commit message as summary
                 revInfo = self.tool.get_revision_info(revision_list[0])
                 desc = revInfo['description'].splitlines(True)
                 if len(desc) > 0:
@@ -235,8 +236,13 @@ class SVNDiffTool:
                         rev2 = Revision(opt_revision_kind.number, status.last_rev)
                         try:
                             diff = self.tool.client.diff(temp_dir_name, self.tool.repopath + urllib.quote(path), revision1=rev1, revision2=rev2)
-                            expanded_diff = self._expand_filename(diff, path, status.first_rev, status.last_rev)
-                            diff_lines += expanded_diff
+                            if diff.startswith('Index:'):
+                                # We have content changes
+                                expanded_diff = self._expand_filename(diff, path, status.first_rev, status.last_rev)
+                                self._remove_property_changes(expanded_diff) 
+                                diff_lines += expanded_diff
+
+                                
                         except pysvn.ClientError, e:
                             if str(e).find('was not found in the repository at revision') != -1:
                                 # Looks like we have special case here, e.g. replacing and renaming at the same time
@@ -253,7 +259,7 @@ class SVNDiffTool:
             raise SCMError(' Error creating diff: ' + str(e) )
         
         if len(diff_lines) < 3:
-            raise SCMError(' There is no source code difference. The changesets might contain binary files and folders only or neutralize themselves.')
+            raise SCMError(' There is no source code difference. The revision(s) might contain binary files and folders only or neutralize themselves.')
         
         return DiffFile(summary, description, str(''.join(diff_lines)))
     
@@ -268,7 +274,23 @@ class SVNDiffTool:
             difflines[2] = '--- ' + fullname + '\t(revision ' + str(rev1) + ')\n'
             difflines[3] = '+++ ' + fullname + '\t(revision ' + str(rev2) + ')\n'          
             return difflines
-                     
+    
+    
+    def _remove_property_changes(self, diff_lines):        
+        # Check diff lines from end to start (because property changes are appended at the end)
+        for line_no in range(len(diff_lines)-1, 0, -1): 
+            first_char = diff_lines[line_no][:1]
+            if first_char == '+': # Heuristic: Stop early if real content diff is found
+                return # do NOT change diff
+            elif first_char == '-': # Heuristic: Stop early if real content diff is found
+                return # do NOT change diff
+            elif first_char == '_':
+                if diff_lines[line_no-1].startswith('Property changes on:'):
+                    # Remove property change info
+                    for j in range(line_no-1, len(diff_lines)): 
+                        diff_lines[j] = ''
+                    return
+                              
                 
     def _get_diff_of_new_file(self, path, new_revision):
         # is same like diff with empty content
