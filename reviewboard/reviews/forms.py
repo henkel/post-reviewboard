@@ -308,7 +308,8 @@ class NewPostReviewRequestForm(forms.Form):
                                       label=_('List of Revisions'), 
                                       max_length=2048, 
                                       required=False, 
-                                      help_text=_('A list of revision identifiers, e.g. 12345 56789 34567'))
+                                      widget=forms.TextInput(attrs={'size':'50'}),
+                                      help_text=_('A list of revision identifiers, e.g. 11235 57789 34567'))
 
     MISSING_ACTION  = 'Click on \"Create Review Request\" to load change lists'
     MISSING_ACTION_KEY = -1
