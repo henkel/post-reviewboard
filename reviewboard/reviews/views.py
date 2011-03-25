@@ -38,7 +38,8 @@ from reviewboard.reviews.datagrids import DashboardDataGrid, \
                                           ReviewRequestDataGrid, \
                                           SubmitterDataGrid, \
                                           WatchedGroupDataGrid
-from reviewboard.reviews.errors import OwnershipError
+from reviewboard.reviews.errors import OwnershipError, \
+                                       RevisionTableUpdated
 from reviewboard.reviews.forms import NewReviewRequestForm, \
                                       UploadDiffForm, \
                                       UploadScreenshotForm, \
@@ -97,7 +98,7 @@ def new_post_review_request(request,
                     diff_file=request.FILES.get('diff_path'),
                     parent_diff_file=request.FILES.get('parent_diff_path'))
                 return HttpResponseRedirect(review_request.get_absolute_url())
-            except (OwnershipError, SCMError, ValueError):
+            except (OwnershipError, SCMError, ValueError, RevisionTableUpdated):
                 pass
     else:
         form = NewPostReviewRequestForm()

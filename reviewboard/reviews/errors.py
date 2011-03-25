@@ -5,3 +5,7 @@ class OwnershipError(ValueError):
 class PermissionError(Exception):
     def __init__(self):
         Exception.__init__(self, None)
+
+
+class RevisionTableUpdated(Exception):
+    pass

@@ -12,13 +12,14 @@ from reviewboard.reviews.models import ReviewRequest
 
 class SVNPostCommitTrackerTool(SVNPostCommitTool):
     name = "Subversion Post Commit Tracker"
+    support_post_commit_tracking = True
     
     def __init__(self, repository):
         SVNPostCommitTool.__init__(self, repository)
     
     
     def get_fields(self):
-        return ['missing_revisions']
+        return ['revisions', 'revision_choice']
     
     
     def get_missing_revisions(self, userid):

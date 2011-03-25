@@ -3,7 +3,7 @@ from django.contrib.admin.widgets import FilteredSelectMultiple
 from django.utils.translation import ugettext as _
 from reviewboard.diffviewer import forms as diffviewer_forms
 from reviewboard.diffviewer.models import DiffSet
-from reviewboard.reviews.errors import OwnershipError
+from reviewboard.reviews.errors import OwnershipError, RevisionTableUpdated
 from reviewboard.reviews.models import DefaultReviewer, ReviewRequest, \
     ReviewRequestDraft, Screenshot
 from reviewboard.scmtools.errors import SCMError, ChangeNumberInUseError, \
@@ -307,9 +307,18 @@ class NewPostReviewRequestForm(forms.Form):
     revisions = forms.RegexField(regex=r'^([A-F,a-f,0-9]+\s*,{0,1}\s*)+$', 
                                       label=_('List of Revisions'), 
                                       max_length=2048, 
-                                      required=True, 
+                                      required=False, 
                                       help_text=_('A list of revision identifiers, e.g. 12345 56789 34567'))
 
+    MISSING_ACTION  = 'Click on \"Create Review Request\" to load change lists'
+    MISSING_ACTION_KEY = -1
+    MISSING_ACTION_CHOICES = [ (MISSING_ACTION_KEY, MISSING_ACTION) ]
+    MISSING_NONE  = 'No missing change lists'
+    MISSING_NONE_KEY = -2
+    MISSING_NONE_CHOICES = [ (MISSING_NONE_KEY, MISSING_NONE) ]
+    #choices = MISSING_ACTION_CHOICES,
+    revision_choice = forms.MultipleChoiceField(label=_("Your Revisions"),  required=False, widget=forms.CheckboxSelectMultiple)
+    revision_choice_title = _('Click here to show revisions which are not yet added to Review Board.')
 
     field_mapping = {}
 
@@ -330,8 +339,8 @@ class NewPostReviewRequestForm(forms.Form):
         for repo in Repository.objects.filter(pk__in=repo_ids).order_by("name"):
             try:
                 tool = repo.get_scmtool()
-                self.field_mapping[repo.id] = tool.get_fields()
                 if hasattr(tool, "support_post_commit") and tool.support_post_commit:
+                    self.field_mapping[repo.id] = tool.get_fields()
                     valid_repos.append((repo.id, repo.name))
 
             except Exception, e:
@@ -347,13 +356,24 @@ class NewPostReviewRequestForm(forms.Form):
             self.fields['repository'].initial = valid_repos[1][0]
 
 
-    def create(self, user, diff_file, parent_diff_file):
+    def create(self, user, diff_file, parent_diff_file):        
         repository = self.cleaned_data['repository']
 
         revision_list = []
         revisions_error_field = ''
         
         fields = repository.get_scmtool().get_fields()
+        
+        
+        if 'show_revisions' in self.data:
+            # User clicked on button 'show my revisions'
+            tool = repository.get_scmtool();
+            if not (hasattr(tool, "support_post_commit_tracking") and tool.support_post_commit):
+                self.errors['revision_choice'] = forms.util.ErrorList("Revision tracking is not supported by selected repository")
+                
+            
+            self.revision_choice_title = _('Your revisions')
+            raise RevisionTableUpdated()
         
         if 'revisions' in fields:
             revisions_error_field = 'revisions'
