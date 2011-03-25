@@ -311,14 +311,10 @@ class NewPostReviewRequestForm(forms.Form):
                                       widget=forms.TextInput(attrs={'size':'50'}),
                                       help_text=_('A list of revision identifiers, e.g. 11235 57789 34567'))
 
-    MISSING_ACTION  = 'Click on \"Create Review Request\" to load change lists'
-    MISSING_ACTION_KEY = -1
-    MISSING_ACTION_CHOICES = [ (MISSING_ACTION_KEY, MISSING_ACTION) ]
-    MISSING_NONE  = 'No missing change lists'
-    MISSING_NONE_KEY = -2
-    MISSING_NONE_CHOICES = [ (MISSING_NONE_KEY, MISSING_NONE) ]
-    #choices = MISSING_ACTION_CHOICES,
-    revision_choice = forms.MultipleChoiceField(label=_("Your Revisions"),  required=False, widget=forms.CheckboxSelectMultiple)
+    revision_choice = forms.MultipleChoiceField(label=_("Your Revisions"),  
+                                                required=False, 
+                                                widget=forms.CheckboxSelectMultiple(attrs={'class':'revision_choice'}))
+    
     revision_choice_title = _('Click here to show revisions which are not yet added to Review Board.')
 
     field_mapping = {}
@@ -371,9 +367,24 @@ class NewPostReviewRequestForm(forms.Form):
             tool = repository.get_scmtool();
             if not (hasattr(tool, "support_post_commit_tracking") and tool.support_post_commit):
                 self.errors['revision_choice'] = forms.util.ErrorList("Revision tracking is not supported by selected repository")
+                raise RevisionTableUpdated()
                 
+            tool = repository.get_scmtool();
+
+            try:
+                missing_revisions = tool.get_missing_revisions(user.username)
+            except Exception, e:
+                self.errors['revision_choice'] = forms.util.ErrorList([str(e)])
+                raise e
             
-            self.revision_choice_title = _('Your revisions')
+            if len(missing_revisions) == 0:
+                self.errors['revision_choice'] = forms.util.ErrorList("No pending revisions found.")
+            else:
+                missing_revisions.reverse()
+                self.fields['revision_choice'].choices = [(rev[0], str(rev[0]) + ' - ' + rev[1]) for rev in missing_revisions]
+                self.base_fields['revision_choice'].choices = self.fields['revision_choice'].choices
+                self.revision_choice_title = _('Your revisions:')
+                
             raise RevisionTableUpdated()
         
         if 'revisions' in fields:
