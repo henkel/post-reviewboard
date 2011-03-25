@@ -34,7 +34,7 @@
 
 
 <form method="post" action="." enctype="multipart/form-data">
-{% box "new-review-request" %}
+{% box "new-post-review-request" %}
  <h1 class="title">{% trans "New Post-commit Review Request" %}</h1>
  <div class="main">
   <table>
@@ -53,7 +53,7 @@
      {% endblocktrans %}
     </td>
    </tr>
-   <tr id="row_revisions">
+   <tr class="row_revisions">
     <td><label for="id_revisions">{{form.revisions.label}}:</label></td>
     <td>{{form.revisions}}</td>
     <td>{{form.revisions.errors}}</td>
@@ -62,6 +62,17 @@
     <td></td>
     <td class="help" colspan="2">{{form.revisions.help_text}}</td>
    </tr>
+
+   <tr class="row_revision_choice" border="1">
+    <td valign="baseline"  border="1"><input type="submit" name="show_revisions" value="{% trans "Show my Revisions" %}" /></td> 
+    <td valign="baseline" colspan="2">{{form.revision_choice_title}}{{form.revision_choice.errors}}</td>
+   </tr>
+   <tr class="row_revision_choice">
+    <td></td>
+    <td valign="baseline"  border="1">{{form.revision_choice}}</td>
+    <td valign="baseline" >test text</td>
+   </tr>
+
   </table>
  </div>
 {% endbox %}
