@@ -403,10 +403,15 @@ class NewPostReviewRequestForm(forms.Form):
         if 'revisions' in fields:
             revisions_error_field = 'revisions'
             split_field = re.split('\s*,{0,1}\s*', self.cleaned_data['revisions'])
-            for number in split_field:
-                if number.strip() != '':
-                    revision_list.append(int(number))
+            for rev in split_field:
+                if rev.strip() != '':
+                    revision_list.append(rev)
+        
+        if 'revisions_choice' in fields:
+            for rev in self.cleaned_data['revisions_choice']:
+                revision_list.append(rev)
                 
+        if len(revision_list) > 0:
             # Eliminate duplicates    
             revision_list = list(set(revision_list))
 
