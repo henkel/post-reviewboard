@@ -313,9 +313,9 @@ class NewPostReviewRequestForm(forms.Form):
 
     revision_choice = forms.MultipleChoiceField(label=_("Your Revisions"),  
                                                 required=False, 
-                                                widget=forms.CheckboxSelectMultiple(attrs={'class':'revision_choice'}))
+                                                widget=forms.CheckboxSelectMultiple)
     
-    revision_choice_title = _('Click here to show revisions which are not yet added to Review Board.')
+    revision_choice_title = _('Click to show revisions which are not yet added to Review Board.')
 
     field_mapping = {}
 
@@ -383,7 +383,7 @@ class NewPostReviewRequestForm(forms.Form):
                 missing_revisions.reverse()
                 self.fields['revision_choice'].choices = [(rev[0], str(rev[0]) + ' - ' + rev[1]) for rev in missing_revisions]
                 self.base_fields['revision_choice'].choices = self.fields['revision_choice'].choices
-                self.revision_choice_title = _('Your revisions:')
+                self.revision_choice_title = _('Click to update your revisions.')
                 
             raise RevisionTableUpdated()
         
