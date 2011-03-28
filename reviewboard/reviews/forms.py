@@ -325,6 +325,7 @@ class NewPostReviewRequestForm(forms.Form):
     revisions_choice_help = REVISIONS_CHOICE_HELP__SHOW
 
     field_mapping = {}
+    
 
     def __init__(self, *args, **kwargs):
         forms.Form.__init__(self, *args, **kwargs)
