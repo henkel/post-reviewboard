@@ -368,16 +368,22 @@ class NewPostReviewRequestForm(forms.Form):
     def create(self, user, diff_file, parent_diff_file):        
         repository = self.cleaned_data['repository']
 
-        revision_list = []
-        revisions_error_field = ''
-        
         fields = repository.get_scmtool().get_fields()
+
+        revisions_error_field = ''
+                
+        if 'revisions' in fields:
+            revisions_error_field = 'revisions'
+            
+        if 'revisions_choice' in fields:
+            revisions_error_field = 'revisions_choice' 
+            
         
         if 'load_revisions_button' in self.data:
             # User clicked on revisions_button
             tool = repository.get_scmtool();
             if not (hasattr(tool, "support_post_commit_tracking") and tool.support_post_commit):
-                self.errors['revisions_choice'] = forms.util.ErrorList("Revision tracking is not supported by selected repository")
+                self.errors[revisions_error_field] = forms.util.ErrorList("Revision tracking is not supported by selected repository")
                 raise RevisionTableUpdated()
                 
             tool = repository.get_scmtool();
@@ -385,11 +391,11 @@ class NewPostReviewRequestForm(forms.Form):
             try:
                 missing_revisions = tool.get_missing_revisions(user.username)
             except Exception, e:
-                self.errors['revisions_choice'] = forms.util.ErrorList([str(e)])
+                self.errors[revisions_error_field] = forms.util.ErrorList([str(e)])
                 raise e
             
             if len(missing_revisions) == 0:
-                self.errors['revisions_choice'] = forms.util.ErrorList("No pending revisions found.")
+                self.errors[revisions_error_field] = forms.util.ErrorList("No pending revisions found.")
             else:
                 missing_revisions.reverse()
                 self.fields['revisions_choice'].choices = [(rev[0], str(rev[0]) + ' - ' + rev[1]) for rev in missing_revisions]
@@ -400,8 +406,10 @@ class NewPostReviewRequestForm(forms.Form):
                 
             raise RevisionTableUpdated()
         
+        
+        revision_list = []
+                
         if 'revisions' in fields:
-            revisions_error_field = 'revisions'
             split_field = re.split('\s*,{0,1}\s*', self.cleaned_data['revisions'])
             for rev in split_field:
                 if rev.strip() != '':
