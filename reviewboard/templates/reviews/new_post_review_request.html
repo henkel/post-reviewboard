@@ -63,14 +63,14 @@
     <td class="help" colspan="2">{{form.revisions.help_text}}</td>
    </tr>
 
-   <tr class="row_revision_choice" border="1">
-    <td valign="baseline"  border="1"><input id="show_revisions_button" type="submit" name="show_revisions" value="{% trans "Show my Revisions" %}" /></td> 
-    <td valign="baseline" colspan="2">{{form.revision_choice_title}}{{form.revision_choice.errors}}</td>
+   <tr class="row_revisions_choice" border="1">
+    <td valign="baseline"  border="1"><input id="load_revisions_button" type="submit" name="load_revisions_button" value="{{form.load_revisions_button}}" /></td> 
+    <td valign="baseline" colspan="2">{{form.revisions_choice_help}}{{form.revisions_choice.errors}}</td>
    </tr>
-   <tr class="row_revision_choice">
+   <tr class="row_revisions_choice" style="margin: 0; padding:0;">
     <td></td>
-    <td class="revision_choice_list" valign="baseline" colspan="2" >
-      {{form.revision_choice}}
+    <td class="revisions_choice_list" valign="baseline" colspan="2" >
+      {{form.revisions_choice}}
     </td>
    </tr>
 

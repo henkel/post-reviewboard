@@ -41,18 +41,18 @@
   background-image: url('../images/review_request_box_bottom_bg.png');
 }
 
-.new-post-commit-review-request .revision_choice_list label{
+.new-post-commit-review-request .revisions_choice_list label{
   font-weight: bold;
   color: black;
 }
 
-.new-post-commit-review-request .revision_choice_list ul {
+.new-post-commit-review-request .revisions_choice_list ul {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-#show_revisions_button {
+#load_revisions_button {
   font-size: 100%;
 }
 

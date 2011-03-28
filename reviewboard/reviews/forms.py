@@ -311,11 +311,18 @@ class NewPostReviewRequestForm(forms.Form):
                                       widget=forms.TextInput(attrs={'size':'50'}),
                                       help_text=_('A list of revision identifiers, e.g. 11235 57789 34567'))
 
-    revision_choice = forms.MultipleChoiceField(label=_("Your Revisions"),  
-                                                required=False, 
-                                                widget=forms.CheckboxSelectMultiple)
+    revisions_choice = forms.MultipleChoiceField(label=_("Your Revisions"),  
+                                                 required=False, 
+                                                 widget=forms.CheckboxSelectMultiple)
     
-    revision_choice_title = _('Click to show revisions which are not yet added to Review Board.')
+     
+    LOAD_REVISIONS_BUTTON__SHOW = _('Show my Revisions')
+    LOAD_REVISIONS_BUTTON__UPDATE = _('Update my Revisions')
+    load_revisions_button = LOAD_REVISIONS_BUTTON__SHOW
+    
+    REVISIONS_CHOICE_HELP__SHOW = _('Click button to show a list of revisions which are not yet added to Review Board.')
+    REVISIONS_CHOICE_HELP__UPDATE  = _('Add one or more revisions from the list below to your review request.')
+    revisions_choice_help = REVISIONS_CHOICE_HELP__SHOW
 
     field_mapping = {}
 
@@ -351,6 +358,10 @@ class NewPostReviewRequestForm(forms.Form):
         # show the first one, rather than the "None" entry.
         if len(valid_repos) > 1:
             self.fields['repository'].initial = valid_repos[1][0]
+            
+        if self.fields['revisions_choice'].choices and 0 != len(self.fields['revisions_choice'].choices):
+            self.load_revisions_button = self.LOAD_REVISIONS_BUTTON__UPDATE
+            self.revisions_choice_help = self.REVISIONS_CHOICE_HELP__UPDATE
 
 
     def create(self, user, diff_file, parent_diff_file):        
@@ -361,12 +372,11 @@ class NewPostReviewRequestForm(forms.Form):
         
         fields = repository.get_scmtool().get_fields()
         
-        
-        if 'show_revisions' in self.data:
-            # User clicked on button 'show my revisions'
+        if 'load_revisions_button' in self.data:
+            # User clicked on revisions_button
             tool = repository.get_scmtool();
             if not (hasattr(tool, "support_post_commit_tracking") and tool.support_post_commit):
-                self.errors['revision_choice'] = forms.util.ErrorList("Revision tracking is not supported by selected repository")
+                self.errors['revisions_choice'] = forms.util.ErrorList("Revision tracking is not supported by selected repository")
                 raise RevisionTableUpdated()
                 
             tool = repository.get_scmtool();
@@ -374,16 +384,18 @@ class NewPostReviewRequestForm(forms.Form):
             try:
                 missing_revisions = tool.get_missing_revisions(user.username)
             except Exception, e:
-                self.errors['revision_choice'] = forms.util.ErrorList([str(e)])
+                self.errors['revisions_choice'] = forms.util.ErrorList([str(e)])
                 raise e
             
             if len(missing_revisions) == 0:
-                self.errors['revision_choice'] = forms.util.ErrorList("No pending revisions found.")
+                self.errors['revisions_choice'] = forms.util.ErrorList("No pending revisions found.")
             else:
                 missing_revisions.reverse()
-                self.fields['revision_choice'].choices = [(rev[0], str(rev[0]) + ' - ' + rev[1]) for rev in missing_revisions]
-                self.base_fields['revision_choice'].choices = self.fields['revision_choice'].choices
-                self.revision_choice_title = _('Click to update your revisions.')
+                self.fields['revisions_choice'].choices = [(rev[0], str(rev[0]) + ' - ' + rev[1]) for rev in missing_revisions]
+                self.base_fields['revisions_choice'].choices = self.fields['revisions_choice'].choices
+                self.load_revisions_button = self.LOAD_REVISIONS_BUTTON__UPDATE
+                self.revisions_choice_help = self.REVISIONS_CHOICE_HELP__UPDATE
+
                 
             raise RevisionTableUpdated()
         
