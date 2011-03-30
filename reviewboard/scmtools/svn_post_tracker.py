@@ -56,8 +56,6 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
         
         return user_revs
 
-        
-        
 
 def get_reviewboards_changesets():
     changelists = []

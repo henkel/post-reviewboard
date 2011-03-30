@@ -40,7 +40,7 @@ class SVNPostCommitTool(SVNTool):
         return SVNDiffTool(self).get_diff_file(revision_list)
     
     def get_revision_info(self, revision):
-        cache_key = 'svn_post_get_revision_info.' + str(revision)
+        cache_key = 'svn_post_get_revision_info.'+ urllib.quote(self.repopath) +'.'+ str(revision)
         res = cache.get(cache_key)
         if res != None:
             return res
@@ -65,7 +65,7 @@ class SVNPostCommitTool(SVNTool):
     
     def is_file(self, path, revision):
         quoted_path = urllib.quote(path)
-        cache_key = 'svn_post_is_file.' + quoted_path   # revision is ignored because a change in file type is considered to happen only very seldom
+        cache_key = 'svn_post_is_file.'+ urllib.quote(self.repopath) +'.'+ quoted_path   # revision is ignored because a change in file type is considered to happen only very seldom
         res = cache.get(cache_key)
         
         if res != None:
