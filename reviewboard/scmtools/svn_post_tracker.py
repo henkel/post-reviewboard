@@ -13,6 +13,7 @@ from reviewboard.scmtools.errors import SCMError
 
 from reviewboard.reviews.models import ReviewRequest
 
+
 try:
     from pysvn import Revision, opt_revision_kind
 except ImportError:
@@ -35,8 +36,14 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
     
     
     def get_missing_revisions(self, userid):
-        revisions_in_repository = self._get_latest_revisions(userid)
-        revisions_in_reviewboard = get_reviewboards_changesets()
+        freshness_delta = timedelta(days=30)
+        
+        # Fetch user's commits from repository
+        revisions_in_repository = self._get_latest_revisions(userid, freshness_delta)
+        
+        # Fetch the already contained
+        revisions_in_reviewboard = get_latest_revisions_added_to_reviewboard(freshness_delta)
+        
         return clean_key_value_list(revisions_in_repository, revisions_in_reviewboard)
 
 
@@ -91,8 +98,8 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
         return log_entries
     
     
-    def _get_latest_revisions(self, userid):
-        log_entries = self._fetch_latest_log(timedelta(days=30)) # TODO timedelta should be customizable 
+    def _get_latest_revisions(self, userid, timedelta):
+        log_entries = self._fetch_latest_log(timedelta) 
         user_revs = []
                                     
         try:
@@ -101,63 +108,45 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
                     user_revs.append((log[0], log[2]))
                
         except pysvn.ClientError, e:
-            raise SCMError(str(e))
+            raise SCMError('Error fetching revisions: ' +str(e))
         
         return user_revs
-
-
-def get_reviewboards_changesets():
-    changelists = []
-    if True:
-        return changelists  ## *********************************
     
-    does_not_exist_counter = 0
-    rid = 0
-
-    while True:
-        rid = rid + 1
-        does_not_exist_counter = does_not_exist_counter + 1
     
-        if does_not_exist_counter > 50:
-            #debug('Stopped looking for more review requests at %d' % rid)
-            break
+def get_latest_revisions_added_to_reviewboard(timedelta):
     
-        try:
-            review_request =  ReviewRequest.objects.get(pk=rid)
-            does_not_exist_counter = 0 # reset counter if we find a list
-
-            if review_request.status == ReviewRequest.DISCARDED:
-                # skip request
-                continue
+    # Filter fresh requests
+    # Our fresh revisions cannot be contained in old requests!
+    # We don't have to consider any ReviewRequest which were last updated before the shown user revisions were created.
+    first_day = date.today()-timedelta
+    requests = ReviewRequest.objects.filter(last_updated__gte=first_day.strftime("%Y-%m-%d"))
+    
+    revisions = []
+    for request in requests:
+        if request.status == ReviewRequest.DISCARDED:
+            # skip request
+            continue
         
-            # Parse change list number which comes like this "Change 457471 by phenkel@phenkel_reviewboard on 2009/08/04 16:03:33"
-            desc = review_request.description 
-            for line in desc.splitlines(True):
-                cl = parse_review_request_description(line)
-                if cl != None:
-                    changelists.append(cl)
-                    #debug('Found Perforce change list on Review Board: ' + str(cl))
+        # Parse description to find revision numbers
+        desc = request.description 
+        for line in desc.splitlines(True):
+            number = parse_review_request_description(line)
+            if number != None:
+                revisions.append(number)
 
-
-        except Exception, e:
-            pass
-    
+        
     # Sort and eliminate duplicates
-    changelists = list(set(changelists))
-    changelists.sort()
-
-    return changelists
-    
-    
-   
+    revisions = list(set(revisions))
+    revisions.sort()       
+    return revisions
     
 
 def parse_review_request_description(line):
-    # Parse change list number which comes like this "Change 457471 by phenkel@phenkel_reviewboard on 2009/08/04 16:03:33"
-    words = line.split(None,  2)
+    # Parse change list number which comes like this "116855 by henkel on 2011-03-24 11:30 AM"
+    words = line.split(' ',  4)
                 
-    if len(words)>=1 and words[0] == 'Change' and words[1].isdigit():
-        return int(words[1])
+    if len(words)>=4 and words[0].isdigit() and words[1] == 'by' and words[3] == 'on':
+        return words[0]
     
     return None
 
