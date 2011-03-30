@@ -4,9 +4,12 @@
 import pysvn
 import time
 import datetime
+import urllib
+
+from datetime import date, timedelta
 
 from reviewboard.scmtools.svn_post import SVNPostCommitTool
-from reviewboard.scmtools.errors import SCMError, EmptyChangeSetError, ChangeSetError
+from reviewboard.scmtools.errors import SCMError
 
 from reviewboard.reviews.models import ReviewRequest
 
@@ -14,6 +17,10 @@ try:
     from pysvn import Revision, opt_revision_kind
 except ImportError:
     pass
+
+from django.core.cache import cache
+
+
 
 class SVNPostCommitTrackerTool(SVNPostCommitTool):
     name = "Subversion Post Commit Tracker"
@@ -32,27 +39,69 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
         revisions_in_reviewboard = get_reviewboards_changesets()
         return clean_key_value_list(revisions_in_repository, revisions_in_reviewboard)
 
+
+    def _fetch_log_of_day_uncached(self, day):  
+        start_time = time.mktime(day.timetuple())
+        end_time = time.mktime((day+timedelta(days=1)).timetuple())
+        
+        start = Revision(opt_revision_kind.date, start_time)
+        end = Revision(opt_revision_kind.date, end_time)
+        log = []
+        
+        for entry in self.client.log(self.repopath, revision_start=start, revision_end=end):
+            
+            if entry['date'] < start_time:
+                continue # workaround for pysvn bug which adds the previous day's last entry
+            
+            submit_date = datetime.datetime.fromtimestamp(entry['date'])      
+            date_str = submit_date.strftime("%Y-%m-%d")
+            desc = 'on ' +date_str + ' : ' +entry['revprops']['svn:log']
+            log.append(( str(entry['revision'].number), 
+                         entry['author'], 
+                         desc))
+        return log      
+        
+        
+    def _fetch_log_of_day(self, day):
+
+        if day == date.today():
+            # Today - do not use cache
+            return self._fetch_log_of_day_uncached(day)
+        else:
+            # Load through cache
+            cache_key = 'svn_post_tracker_log.'+ urllib.quote(self.repopath) +'.'+ day.strftime("%Y-%m-%d")
+            entries = cache.get(cache_key)
+            if entries != None:
+                return entries
+            else:
+                entries = self._fetch_log_of_day_uncached(day)
+                cache.set(cache_key, entries)
+            return entries
+  
+        
+    def _fetch_latest_log(self, delta):
+        cur = date.today()
+        first_day = date.today()-delta
+        log_entries = []
+        while cur > first_day:
+            latest_entries = log_entries
+            log_entries = self._fetch_log_of_day(cur)
+            log_entries.extend(latest_entries)
+            cur -= timedelta(days=1)
+        return log_entries
+    
     
     def _get_latest_revisions(self, userid):
- 
-        # Get change list of last 30 days
-        one_day_dur = 24*60*60
-                    
-        now = time.time()            
-        start = Revision(opt_revision_kind.date, now - 30 * one_day_dur)
-        end = Revision(opt_revision_kind.date, now)
-        
+        log_entries = self._fetch_latest_log(timedelta(days=30)) # TODO timedelta should be customizable 
         user_revs = []
                                     
         try:
-            for log in self.client.log(self.repopath, revision_start=start, revision_end=end): 
-                if log['author'] == userid:
-                    submit_date = datetime.datetime.fromtimestamp(log['date'])      
-                    date_str = submit_date.strftime("%Y-%m-%d")
-                    user_revs.append((str(log['revision'].number), 'on ' +date_str + ' : ' +log['revprops']['svn:log']))   
+            for log in log_entries: 
+                if log[1] == userid:
+                    user_revs.append((log[0], log[2]))
                
         except pysvn.ClientError, e:
-            raise
+            raise SCMError(str(e))
         
         return user_revs
 
