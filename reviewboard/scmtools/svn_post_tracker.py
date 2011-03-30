@@ -1,6 +1,7 @@
 # SVN post-commit SCM tool with tracking functionality
 # Author: Philipp Henkel, weltraumpilot@googlemail.com
 
+import pysvn
 import time
 import datetime
 
@@ -9,6 +10,10 @@ from reviewboard.scmtools.errors import SCMError, EmptyChangeSetError, ChangeSet
 
 from reviewboard.reviews.models import ReviewRequest
 
+try:
+    from pysvn import Revision, opt_revision_kind
+except ImportError:
+    pass
 
 class SVNPostCommitTrackerTool(SVNPostCommitTool):
     name = "Subversion Post Commit Tracker"
@@ -29,36 +34,28 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
 
     
     def _get_latest_revisions(self, userid):
-        if True:
-            return [(int('104560'), 'revision nr 1'), (int('114329'), 'revision nr 2')]  # *******************************
+ 
+        # Get change list of last 30 days
+        one_day_dur = 24*60*60
+                    
+        now = time.time()            
+        start = Revision(opt_revision_kind.date, now - 30 * one_day_dur)
+        end = Revision(opt_revision_kind.date, now)
         
-        self._connect()
-        
+        user_revs = []
+                                    
         try:
-            # Get change list of last 30 days
-            current_time = time.time()
-            one_day_dur = 24*60*60
-            since_time = current_time - 30 * one_day_dur
-            since_date = datetime.datetime.fromtimestamp(since_time)        
-            since_date_str = since_date.strftime("%Y/%m/%d")
-            
-            changes  = self.p4.run_changes('-l', '-s', 'submitted', '-u', userid, "//...@" + since_date_str + ",@now")
+            for log in self.client.log(self.repopath, revision_start=start, revision_end=end): 
+                if log['author'] == userid:
+                    submit_date = datetime.datetime.fromtimestamp(log['date'])      
+                    date_str = submit_date.strftime("%Y-%m-%d")
+                    user_revs.append((str(log['revision'].number), 'on ' +date_str + ' : ' +log['revprops']['svn:log']))   
+               
+        except pysvn.ClientError, e:
+            raise
         
-            changelists = []
-            for changedesc in changes:
-                no          = int(changedesc['change'])
-                #submit_time = time.ctime(int(changedesc['time']))
-                submit_date = datetime.datetime.fromtimestamp(int(changedesc['time']))        
-                time_str = submit_date.strftime("%Y/%m/%d")
-                #description =  'Change ' + changedesc['change'] + ' by ' + changedesc['user'] + '@' + changedesc['client'] + ' on ' + time_str + ': '+ unicode(changedesc['desc'])
-                description = changedesc['change'] +' ___ on ' + time_str + ' in ' + changedesc['client'] + ' ___ ' +  changedesc['desc']
-                changelists.append((no, to_unicode(description)))
-        
-                changelists.sort(lambda x, y: cmp(x[0],  y[0]))
-            return changelists
-        
-        except Exception, e:
-            raise ChangeSetError('Error creating diff: ' + str(e) )
+        return user_revs
+
         
         
 

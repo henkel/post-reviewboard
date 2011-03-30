@@ -398,7 +398,7 @@ class NewPostReviewRequestForm(forms.Form):
                 self.errors[revisions_error_field] = forms.util.ErrorList("No pending revisions found.")
             else:
                 missing_revisions.reverse()
-                self.fields['revisions_choice'].choices = [(rev[0], str(rev[0]) + ' - ' + rev[1]) for rev in missing_revisions]
+                self.fields['revisions_choice'].choices = [(rev[0], str(rev[0]) + ' ' + rev[1]) for rev in missing_revisions]
                 self.base_fields['revisions_choice'].choices = self.fields['revisions_choice'].choices
                 self.load_revisions_button = self.LOAD_REVISIONS_BUTTON__UPDATE
                 self.revisions_choice_help = self.REVISIONS_CHOICE_HELP__UPDATE

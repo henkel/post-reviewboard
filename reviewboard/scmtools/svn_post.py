@@ -105,6 +105,7 @@ class SVNPostCommitTool(SVNTool):
             normalized.append({'path':cpath['path'], 'action': cpath['action']} ) 
         return normalized
     
+    
 class DiffFile:
     def __init__(self, name, description, data):
         self.name = name
