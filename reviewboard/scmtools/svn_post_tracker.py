@@ -136,7 +136,8 @@ def get_latest_revisions_added_to_reviewboard(userid, timedelta):
     
 
 def parse_review_request_description(line):
-    # Parse change list number which comes like this "116855 by henkel on 2011-03-24 11:30 AM"
+    # Try to extract revision info tuple (rev, user) from line
+    # Revision info example: "116855 by henkel on 2011-03-24 11:30 AM"
     words = line.split(' ',  4)
                 
     if len(words)>=4 and words[0].isdigit() and words[1] == 'by' and words[3] == 'on':
