@@ -1,16 +1,14 @@
-# SVN post-commit SCM tool with tracking functionality
+# SVN post-commit SCM tool with revision tracking functionality
 # Author: Philipp Henkel, weltraumpilot@googlemail.com
 
 import pysvn
 import time
-import datetime
 import urllib
 
-from datetime import date, timedelta
+from datetime import datetime, date, timedelta
 
 from reviewboard.scmtools.svn_post import SVNPostCommitTool
 from reviewboard.scmtools.errors import SCMError
-
 from reviewboard.reviews.models import ReviewRequest
 
 
@@ -42,9 +40,9 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
         revisions_in_repository = self._get_latest_revisions(userid, freshness_delta)
         
         # Fetch the already contained
-        revisions_in_reviewboard = get_latest_revisions_added_to_reviewboard(freshness_delta)
+        revision_numbers_in_reviewboard = get_latest_revisions_added_to_reviewboard(userid, freshness_delta)
         
-        return clean_key_value_list(revisions_in_repository, revisions_in_reviewboard)
+        return [ rev for rev in revisions_in_repository if not rev[0] in revision_numbers_in_reviewboard ]
 
 
     def _fetch_log_of_day_uncached(self, day):  
@@ -60,7 +58,7 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
             if entry['date'] < start_time:
                 continue # workaround for pysvn bug which adds the previous day's last entry
             
-            submit_date = datetime.datetime.fromtimestamp(entry['date'])      
+            submit_date = datetime.fromtimestamp(entry['date'])      
             date_str = submit_date.strftime("%Y-%m-%d")
             desc = 'on ' +date_str + ' : ' +entry['revprops']['svn:log']
             log.append(( str(entry['revision'].number), 
@@ -113,7 +111,7 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
         return user_revs
     
     
-def get_latest_revisions_added_to_reviewboard(timedelta):
+def get_latest_revisions_added_to_reviewboard(userid, timedelta):
     
     # Filter fresh requests
     # Our fresh revisions cannot be contained in old requests!
@@ -130,15 +128,11 @@ def get_latest_revisions_added_to_reviewboard(timedelta):
         # Parse description to find revision numbers
         desc = request.description 
         for line in desc.splitlines(True):
-            number = parse_review_request_description(line)
-            if number != None:
+            (number, user) = parse_review_request_description(line)
+            if user == userid:
                 revisions.append(number)
-
-        
-    # Sort and eliminate duplicates
-    revisions = list(set(revisions))
-    revisions.sort()       
-    return revisions
+     
+    return set(revisions)
     
 
 def parse_review_request_description(line):
@@ -146,216 +140,7 @@ def parse_review_request_description(line):
     words = line.split(' ',  4)
                 
     if len(words)>=4 and words[0].isdigit() and words[1] == 'by' and words[3] == 'on':
-        return words[0]
+        return (words[0], words[2])
     
-    return None
-
-
-
-# PRE: key_value_list and keys_to_be_removed are sorted (ascending)
-# key_value_list is list <key, value> pairs, e.g. [(1, 'foo'), (2, 'bar')]
-# keys_to_be_removed is list of keys, e.g. [1, 2, 3]
-# keys_to_be_removed is allowed to contain keys not available in key_value_list
-# POST: returns new key value list which does not contain any key listed in keys_to_be_removed
-def clean_key_value_list(key_value_list, keys_to_be_removed):
-    
-    if keys_to_be_removed == None or len(keys_to_be_removed) == 0:
-        # Nothing to be removed
-        return key_value_list
-
-    rm_idx = 0
-    rm_key = keys_to_be_removed[rm_idx]  # at least one key is contained (see above checks)
-
-    result = []
-
-    # Iterate over key_value_list and build result list
-    for key_value in key_value_list:
-        key = key_value[0]
-   
-        if key < rm_key:
-            # KEEP: key is less than next key that shall be removed 
-            result.append( key_value ) 
-    
-        elif key == rm_key:
-            # REMOVE: keys match
-            pass
-    
-        else:  
-            # key > rm_key
-            
-            # Continue to iterate over keys_to_be_removed till rm_key 
-            # that is equal or greater than current key is found
-            while rm_idx < len(keys_to_be_removed)-1:
-                rm_idx = rm_idx+1
-                rm_key = keys_to_be_removed[rm_idx]
-                
-                if key < rm_key:
-                    # KEEP
-                    result.append( key_value ) 
-                    break
-                elif key == rm_key:
-                    # REMOVE
-                    break
-                else:
-                    # SKIP: rm_key is not contained in key_value_list
-                    pass
-            
-            # Check if 'end of keys_to_be_removed list was already reached'
-            #          and 'key is greater than last rm_key' (other cases are covered in while loop)
-            if rm_idx >= len(keys_to_be_removed)-1 and key > rm_key:
-                result.append( key_value ) 
-
-    return result
-
-
-
-
-
-
-
-#
-# Test code for function clean_key_value_list
-# 
-
-def test__clean_key_value_list():
-    try:
-        print '#### clean_key_value_list test suite'
-        test1()
-        test1_2()
-        test2()
-        test3()
-        test4()
-        test4_2();
-        test5()
-        test6()
-        test7()
-        test8()
-        print '#### clean_key_value_list 100% PASSED'
-    except Exception, e:
-        print '#### clean_key_value_list tests FAILED' 
-        pass
-
-def test_equal(a, b):
-    if len(a) != len(b):
-        return False 
-    for idx in range(0, len(a)):
-        if a[idx] != b[idx]:
-            return False
-    return True
-
-
-# Default case: more items in key_value_list than in keys_to_be_removed, every remove key available
-def test1():
-    print 'start test 1'
-    a = [(1, '1'), (2, '2'), (3, '3'), (4, '4'), (5, '5'), (6, '6'), (7, '7')]
-    b = [1, 2, 3, 4, 5]
-    c = clean_key_value_list(a, b)
-    d = [(6, '6'), (7, '7')]
-
-    if not test_equal(c, d):
-        raise Exception('test 1 failed')
-
-
-# Mixed, some matches 
-def test1_2():
-    print 'start test 1_2'
-    a = [(1, '1'), (2, '2'), (4, '4'), (5, '5'),(7, '7')]
-    b = [1, 2, 3, 6 ]
-    c = clean_key_value_list(a, b)
-    d = [(4, '4'), (5, '5'),(7, '7')]
-
-    if not test_equal(c, d):
-        raise Exception('test 1_2 failed')
-
-
-# More items in keys_to_be_removed    
-def test2():
-    print 'start test 2'
-    a = [(1, '1')]
-    b = [1, 2, 3, 4, 5]
-    c = clean_key_value_list(a, b)
-    d = []
-
-    if not test_equal(c, d):
-        raise Exception('test 2 failed')
-
-# Empty key_value_list
-def test3():
-    print 'start test 3'
-    a = []
-    b = [1, 2, 3, 4, 5]
-    c = clean_key_value_list(a, b)
-    d = []
-
-    if not test_equal(c, d):
-        raise Exception('test 3 failed')
-
-# Empty keys_to_be_removed list
-def test4():
-    print 'start test 4'
-    a = [(1, '1'), (2, '2')]
-    b = []
-    c = clean_key_value_list(a, b)
-    d = [(1, '1'), (2, '2')]
-
-    if not test_equal(c, d):
-        raise Exception('test 4 failed')
-
-# Both lists empty
-def test4_2():
-    print 'start test 4_2'
-    a = []
-    b = []
-    c = clean_key_value_list(a, b)
-    d = []
-
-    if not test_equal(c, d):
-        raise Exception('test 4_2 failed')
-
-# Keep last key_value_item
-def test5():
-    print 'start test 5'
-    a = [(1, '1'), (2, '2')]
-    b = [1]
-    c = clean_key_value_list(a, b)
-    d = [(2, '2')]
-
-    if not test_equal(c, d):
-        raise Exception('test 5 failed')
-
-# Some key_values, some remove keys are missing
-def test6():
-    print 'start test 6'
-    a = [(1, '1'), (2, '2'), (3, '3'), (4, '4'), (5, '5'), (6, '6')]
-    b = [1, 2, 5, 6]
-    c = clean_key_value_list(a, b)
-    d = [(3, '3'), (4, '4')]
-
-    if not test_equal(c, d):
-        raise Exception('test 6 failed')
-
-
-# Dieter's Bug (4 was doubled)
-def test7():
-    print 'start test 7'
-    a = [(1, '1'), (2, '2'), (4, '4'), (5, '5'), (6, '6')]
-    b = [1, 2, 3, 5 ]
-    c = clean_key_value_list(a, b)
-    d = [(4, '4'), (6, '6')]
-
-    if not test_equal(c, d):
-        raise Exception('test 7 failed')
-
-# No match at all
-def test8():
-    print 'start test 8'
-    a = [(4, '4')]
-    b = [3, 5 ]
-    c = clean_key_value_list(a, b)
-    d = [(4, '4')]
-
-    if not test_equal(c, d):
-        raise Exception('test 8 failed')
-
-
+    return (None, None)
 
