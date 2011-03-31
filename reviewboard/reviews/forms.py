@@ -360,9 +360,10 @@ class NewPostReviewRequestForm(forms.Form):
         if len(valid_repos) > 1:
             self.fields['repository'].initial = valid_repos[1][0]
             
-        if self.fields['revisions_choice'].choices and 0 != len(self.fields['revisions_choice'].choices):
-            self.load_revisions_button = self.LOAD_REVISIONS_BUTTON__UPDATE
-            self.revisions_choice_help = self.REVISIONS_CHOICE_HELP__UPDATE
+        if self.fields['revisions_choice'].choices:
+            # Always clear revision choice
+            self.fields['revisions_choice'].choices = []
+            self.base_fields['revisions_choice'].choices = []
 
 
     def create(self, user, diff_file, parent_diff_file):        
@@ -439,7 +440,6 @@ class NewPostReviewRequestForm(forms.Form):
                 review_request.delete()
                 self.errors[revisions_error_field] = forms.util.ErrorList("Could not create diff for specified revisions: " + str(e))
                 raise
-            
             except Exception, e:
                 review_request.delete()
                 self.errors[revisions_error_field] = forms.util.ErrorList([e])
