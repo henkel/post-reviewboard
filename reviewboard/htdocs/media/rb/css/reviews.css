@@ -61,6 +61,14 @@
   font-size: 100%;
 }
 
+#create_button {
+   font-size: 110%;
+   font-weight:bold;
+   padding-left: 1em;
+   padding-right: 1em; 
+   margin-right: 1em; 
+}
+
 
 /****************************************************************************
  * Review Request Box

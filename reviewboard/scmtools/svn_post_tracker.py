@@ -34,7 +34,7 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
     
     
     def get_missing_revisions(self, userid):
-        freshness_delta = timedelta(days=30)
+        freshness_delta = timedelta(days=21)
         
         # Fetch user's commits from repository
         revisions_in_repository = self._get_latest_revisions(userid, freshness_delta)
@@ -67,7 +67,7 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
         return log      
         
         
-    def _fetch_log_of_day(self, day):
+    def _fetch_log_of_day(self, day, freshness_delta):
 
         if day == date.today():
             # Today - do not use cache
@@ -80,24 +80,24 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
                 return entries
             else:
                 entries = self._fetch_log_of_day_uncached(day)
-                cache.set(cache_key, entries)
+                cache.set(cache_key, entries, freshness_delta.days * 3600 + freshness_delta.seconds)
             return entries
   
         
-    def _fetch_latest_log(self, delta):
+    def _fetch_latest_log(self, freshness_delta):
         cur = date.today()
-        first_day = date.today()-delta
+        first_day = date.today()-freshness_delta
         log_entries = []
         while cur > first_day:
             latest_entries = log_entries
-            log_entries = self._fetch_log_of_day(cur)
+            log_entries = self._fetch_log_of_day(cur, freshness_delta)
             log_entries.extend(latest_entries)
             cur -= timedelta(days=1)
         return log_entries
     
     
-    def _get_latest_revisions(self, userid, timedelta):
-        log_entries = self._fetch_latest_log(timedelta) 
+    def _get_latest_revisions(self, userid, freshness_delta):
+        log_entries = self._fetch_latest_log(freshness_delta) 
         user_revs = []
                                     
         try:
@@ -111,12 +111,12 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
         return user_revs
     
     
-def get_latest_revisions_added_to_reviewboard(userid, timedelta):
+def get_latest_revisions_added_to_reviewboard(userid, freshness_delta):
     
     # Filter fresh requests
     # Our fresh revisions cannot be contained in old requests!
     # We don't have to consider any ReviewRequest which were last updated before the shown user revisions were created.
-    first_day = date.today()-timedelta
+    first_day = date.today()-freshness_delta
     requests = ReviewRequest.objects.filter(last_updated__gte=first_day.strftime("%Y-%m-%d"))
     
     revisions = []

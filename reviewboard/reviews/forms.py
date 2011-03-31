@@ -439,6 +439,7 @@ class NewPostReviewRequestForm(forms.Form):
                 review_request.delete()
                 self.errors[revisions_error_field] = forms.util.ErrorList("Could not create diff for specified revisions: " + str(e))
                 raise
+            
             except Exception, e:
                 review_request.delete()
                 self.errors[revisions_error_field] = forms.util.ErrorList([e])

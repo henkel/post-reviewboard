@@ -25,19 +25,24 @@ class SVNPostCommitTool(SVNTool):
     def __init__(self, repository):
         SVNTool.__init__(self, repository)
     
+    
     def get_fields(self):
         return ['revisions']
+    
     
     def get_diffs_use_absolute_paths(self):
         return True
     
+    
     def get_file(self, path, revision=HEAD):
         return SVNTool.get_file(self, path, revision)
+
 
     def get_diff_file(self, revision_list):
         if revision_list == None or len(revision_list) == 0:
             raise SCMError('List of revisions is empty')
         return SVNDiffTool(self).get_diff_file(revision_list)
+    
     
     def get_revision_info(self, revision):
         cache_key = 'svn_post_get_revision_info.'+ urllib.quote(self.repopath) +'.'+ str(revision)
@@ -60,12 +65,14 @@ class SVNPostCommitTool(SVNTool):
                         'changes':changes, 
                         'date':logs[0].date}
         
-        cache.set(cache_key, revisionInfo)
+        cache.set(cache_key, revisionInfo, 60*60*24*7)
         return revisionInfo
+    
     
     def is_file(self, path, revision):
         quoted_path = urllib.quote(path)
         cache_key = 'svn_post_is_file.'+ urllib.quote(self.repopath) +'.'+ quoted_path   # revision is ignored because a change in file type is considered to happen only very seldom
+        cache_timeout = 60*60*24 * 7 * 30
         res = cache.get(cache_key)
         
         if res != None:
@@ -75,16 +82,16 @@ class SVNPostCommitTool(SVNTool):
         
         entry = self.client.info2(self.repopath+quoted_path, revision=rev)
         if entry[0][1]['kind'] != pysvn.node_kind.file:
-            cache.set(cache_key, False)
+            cache.set(cache_key, False, cache_timeout)
             return False
 
         property = self.client.propget('svn:mime-type', self.repopath+quoted_path, rev)
         if len(property) > 0:
             if 'application/octet-stream' in property.values():
-                cache.set(cache_key, False)
+                cache.set(cache_key, False, cache_timeout)
                 return False
         
-        cache.set(cache_key, True)    
+        cache.set(cache_key, True, cache_timeout)    
         return True
 
     

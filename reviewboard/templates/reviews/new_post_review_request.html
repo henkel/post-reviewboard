@@ -33,11 +33,18 @@
 {% block content %}
 
 
-<form method="post" action="." enctype="multipart/form-data">
+<form method="post" enctype="multipart/form-data">
 {% box "new-post-commit-review-request" %}
- <h1 class="title">{% trans "New Post-commit Review Request" %}</h1>
+ <h1 class="title"> <input type="submit" id="create_button" value="{% trans "Create" %}" /> {% trans "New Post-commit Review Request" %} </h1>
  <div class="main">
   <table>
+
+   <tr class="row_revisions_choice">
+    <td colspan="3" class="revisions_choice_list">
+      {{form.revisions_choice.errors}}
+    </td>
+   </tr>
+
    <tr>
     <td><label for="id_repository">{% trans "Repository" %}:</label></td>
 	<td>{{form.repository}}</td>
@@ -73,19 +80,9 @@
       {{form.revisions_choice}}
     </td>
    </tr>
-   <tr class="row_revisions_choice"><td colspan="3"/></tr>
-   <tr class="row_revisions_choice">
-    <td colspan="3" class="revisions_choice_list">
-      {{form.revisions_choice.errors}}
-    </td>
-   </tr>
-
   </table>
  </div>
 {% endbox %}
- <div class="prefsbuttons">
-  <input type="submit" value="{% trans "Create Review Request" %}" />
- </div>
 </form>
 
 {% endblock %}
