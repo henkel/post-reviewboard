@@ -126,11 +126,12 @@ def get_latest_revisions_added_to_reviewboard(userid, freshness_delta):
             continue
         
         # Parse description to find revision numbers
+        lc_userid = userid.lower()
         desc = request.description 
         for line in desc.splitlines(True):
-            (number, user) = parse_review_request_description(line)
-            if user == userid:
-                revisions.append(number)
+            rev_user = parse_review_request_description(line)
+            if rev_user != None and rev_user[1].lower() == lc_userid: # case-insensitive comparison
+                revisions.append(rev_user[0])
      
     return set(revisions)
     
@@ -143,5 +144,5 @@ def parse_review_request_description(line):
     if len(words)>=4 and words[0].isdigit() and words[1] == 'by' and words[3] == 'on':
         return (words[0], words[2])
     
-    return (None, None)
+    return None
 
