@@ -98,7 +98,7 @@ class SVNPostCommitTool(SVNTool):
     def _reduceToTextFiles(self, changed_paths, revision):
         filtered = []
         for cpath in changed_paths:
-            rev = revision
+            rev = int(revision)
             if cpath['action'] == 'D':
                 rev = rev - 1
             if self.is_file(cpath['path'], rev):
@@ -249,7 +249,6 @@ class SVNDiffTool:
                                 expanded_diff = self._expand_filename(diff, path, status.first_rev, status.last_rev)
                                 self._remove_property_changes(expanded_diff) 
                                 diff_lines += expanded_diff
-
                                 
                         except pysvn.ClientError, e:
                             if str(e).find('was not found in the repository at revision') != -1:

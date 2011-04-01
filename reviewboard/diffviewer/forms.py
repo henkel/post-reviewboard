@@ -53,7 +53,6 @@ class UploadDiffForm(forms.Form):
             del(self.fields['basedir'])
             del(self.fields['path'])
             del(self.fields['parent_diff_path'])
-            pass
         else:
             del(self.fields['revisions'])
             if self.repository.get_scmtool().get_diffs_use_absolute_paths():

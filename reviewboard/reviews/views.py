@@ -95,8 +95,7 @@ def new_post_review_request(request,
             try:
                 review_request = form.create(
                     user=request.user,
-                    diff_file=request.FILES.get('diff_path'),
-                    parent_diff_file=request.FILES.get('parent_diff_path'))
+                    diff_file=request.FILES.get('diff_path'))
                 return HttpResponseRedirect(review_request.get_absolute_url())
             except (OwnershipError, SCMError, ValueError, RevisionTableUpdated):
                 pass

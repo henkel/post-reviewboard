@@ -119,12 +119,14 @@ class NewReviewRequestForm(forms.Form):
         if len(valid_repos) > 1:
             self.fields['repository'].initial = valid_repos[1][0]
 
+
     @staticmethod
     def create_from_list(data, constructor, error):
         """Helper function to combine the common bits of clean_target_people
            and clean_target_groups"""
         names = [x for x in map(str.strip, re.split(',\s*', data)) if x]
         return set([constructor(name) for name in names])
+
 
     def create(self, user, diff_file, parent_diff_file):
         repository = self.cleaned_data['repository']
@@ -288,6 +290,12 @@ class UploadScreenshotForm(forms.Form):
         return screenshot
 
 
+class MultiChoiceWithoutValidation(forms.MultipleChoiceField):
+    def validate(self, value):
+        # Choices are created dynamically and cannot be validated
+        pass
+    
+
 class NewPostReviewRequestForm(forms.Form):
     """
     A form that handles creationg of new review requests. These take
@@ -303,18 +311,15 @@ class NewPostReviewRequestForm(forms.Form):
         empty_label=NO_REPOSITORY_ENTRY,
         required=False)
     
-    # match '23 42 3343' or '23, 34 , 235235'
-    revisions = forms.RegexField(regex=r'^([A-F,a-f,0-9]+\s*,{0,1}\s*)+$', 
-                                      label=_('List of Revisions'), 
-                                      max_length=2048, 
-                                      required=False, 
-                                      widget=forms.TextInput(attrs={'size':'50'}),
-                                      help_text=_('A list of revision identifiers, e.g. 11235 57789 34567'))
+    # match ' 23 42 3343 ' or ' 23, 34 , 235235 '
+    revisions = forms.RegexField(regex=r'^(\s*[A-F,a-f,0-9]+\s*,{0,1}\s*)+$', 
+                                 label=_('List of Revisions'), 
+                                 max_length=2048, 
+                                 required=False, 
+                                 widget=forms.TextInput(attrs={'size':'50'}),
+                                 help_text=_('A list of revision identifiers, e.g. 11235 57789 34567'))
 
-    revisions_choice = forms.MultipleChoiceField(label=_("Your Revisions"),  
-                                                 required=False, 
-                                                 widget=forms.CheckboxSelectMultiple)
-    
+    revisions_choice = MultiChoiceWithoutValidation(required=False, widget=forms.CheckboxSelectMultiple) 
      
     LOAD_REVISIONS_BUTTON__SHOW = _('Show my Revisions')
     LOAD_REVISIONS_BUTTON__UPDATE = _('Update my Revisions')
@@ -358,28 +363,22 @@ class NewPostReviewRequestForm(forms.Form):
         # If we have any repository entries we can show, then we should
         # show the first one, rather than the "None" entry.
         if len(valid_repos) > 1:
-            self.fields['repository'].initial = valid_repos[1][0]
-            
-        if self.fields['revisions_choice'].choices:
-            # Always clear revision choice
-            self.fields['revisions_choice'].choices = []
-            self.base_fields['revisions_choice'].choices = []
+            self.fields['repository'].initial = valid_repos[1][0]  
 
 
-    def create(self, user, diff_file, parent_diff_file):        
+    def create(self, user, diff_file):        
         repository = self.cleaned_data['repository']
 
-        fields = repository.get_scmtool().get_fields()
+        tool_fields = repository.get_scmtool().get_fields()
 
         revisions_error_field = ''
                 
-        if 'revisions' in fields:
+        if 'revisions' in tool_fields:
             revisions_error_field = 'revisions'
             
-        if 'revisions_choice' in fields:
+        if 'revisions_choice' in tool_fields:
             revisions_error_field = 'revisions_choice' 
-            
-        
+              
         if 'load_revisions_button' in self.data:
             # User clicked on revisions_button
             tool = repository.get_scmtool();
@@ -397,30 +396,29 @@ class NewPostReviewRequestForm(forms.Form):
             
             if len(missing_revisions) == 0:
                 self.fields['revisions_choice'].choices = []
-                self.base_fields['revisions_choice'].choices = []
+                self.cleaned_data['revisions_choice'] = []
                 self.errors[revisions_error_field] = forms.util.ErrorList("No pending revisions found.")
             else:
                 missing_revisions.reverse()
-                self.fields['revisions_choice'].choices = [(rev[0], str(rev[0]) + ' ' + rev[1]) for rev in missing_revisions]
-                self.base_fields['revisions_choice'].choices = self.fields['revisions_choice'].choices
+                self.fields['revisions_choice'].choices = [ (rev[0], rev[0]+' '+rev[1]) for rev in missing_revisions ]
                 self.load_revisions_button = self.LOAD_REVISIONS_BUTTON__UPDATE
                 self.revisions_choice_help = self.REVISIONS_CHOICE_HELP__UPDATE
-
-                
+   
             raise RevisionTableUpdated()
         
         
         revision_list = []
                 
-        if 'revisions' in fields:
+        if 'revisions' in self.cleaned_data:
             split_field = re.split('\s*,{0,1}\s*', self.cleaned_data['revisions'])
             for rev in split_field:
                 if rev.strip() != '':
                     revision_list.append(rev)
         
-        if 'revisions_choice' in fields:
+        if 'revisions_choice' in self.cleaned_data:
             for rev in self.cleaned_data['revisions_choice']:
                 revision_list.append(rev)
+                self.data['revisions'] += ' ' + str(rev)
                 
         if len(revision_list) > 0:
             # Eliminate duplicates    
