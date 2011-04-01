@@ -99,10 +99,12 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
     def _get_latest_revisions(self, userid, freshness_delta):
         log_entries = self._fetch_latest_log(freshness_delta) 
         user_revs = []
-                                    
+                
+        lc_userid = userid.lower()
+                            
         try:
             for log in log_entries: 
-                if log[1] == userid:
+                if log[1].lower() == lc_userid:
                     user_revs.append((log[0], log[2]))
                
         except pysvn.ClientError, e:
