@@ -100,8 +100,11 @@ class SVNPostCommitTool(SVNTool):
         for cpath in changed_paths:
             rev = int(revision)
             if cpath['action'] == 'D':
+                # Always append deleted paths
+                # This is needed to filter content of deleted folders. All deleted entries will be removed later.
                 rev = rev - 1
-            if self.is_file(cpath['path'], rev):
+                filtered.append(cpath)
+            elif self.is_file(cpath['path'], rev):
                 filtered.append(cpath) 
         return filtered
     
@@ -223,6 +226,10 @@ class SVNDiffTool:
             modified_paths = {}
             for revision in revision_list:
                 description += self._merge_revision_into_list_of_modified_files(revision, modified_paths)
+                
+            # Remove deleted files + folders and remove files that are located in deleted folders
+            modified_paths = remove_deleted_paths(modified_paths)
+            
             
             temp_dir_name = tempfile.mkdtemp(prefix='reviewboard_svn_post.')    
                 
@@ -266,7 +273,7 @@ class SVNDiffTool:
             raise SCMError(' Error creating diff: ' + str(e) )
         
         if len(diff_lines) < 3:
-            raise SCMError(' There is no source code difference. The revision(s) might contain binary files and folders only or neutralize themselves.')
+            raise SCMError(' There is no source code difference. The changes might consists of deletions only or neutralize themself. Binary files and folders are ignored completely.')
         
         return DiffFile(summary, description, str(''.join(diff_lines)))
     
@@ -321,7 +328,7 @@ class SVNDiffTool:
         
     def _get_diff_of_deleted_file(self, path, last_revision):
         # is same like diff with empty file
-        content = self.tool.get_file(urllib.quote(path), last_revision)
+        content = self.tool.get_file(path, last_revision)
         diff_lines = content.splitlines(True)
 
         file_len = len(diff_lines)
@@ -375,4 +382,21 @@ class SVNDiffTool:
         return description
     
     
+def remove_deleted_paths(modified_paths):
+    deleted_paths = [ path for path, status in modified_paths.iteritems() if status.change_type == DiffStatus.DELETED ]
+    all_paths = modified_paths.keys()
+    
+    to_be_deleted = []
+        
+    for parent in deleted_paths:
+        to_be_deleted.append(parent)
+        to_be_deleted.extend( filter(lambda p: p.startswith(parent+'/'), all_paths) )
+    
+    modified_paths = dict( [ (path, status) for path, status in modified_paths.iteritems() if not path in to_be_deleted ] )      
+    return modified_paths
+
+        
+    
+
+            
 
