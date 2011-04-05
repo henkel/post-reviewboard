@@ -321,11 +321,14 @@ class NewPostReviewRequestForm(forms.Form):
 
     revisions_choice = MultiChoiceWithoutValidation(required=False, widget=forms.CheckboxSelectMultiple) 
      
-    LOAD_REVISIONS_BUTTON__SHOW = _('Show my Revisions')
-    LOAD_REVISIONS_BUTTON__UPDATE = _('Update my Revisions')
+    LOAD_REVISIONS_BUTTON__SHOW = _('Get Revisions')
+    LOAD_REVISIONS_BUTTON__UPDATE = _('Refresh Revisions')
     load_revisions_button = LOAD_REVISIONS_BUTTON__SHOW
     
-    REVISIONS_CHOICE_HELP__SHOW = _('Click button to show a list of revisions which are not yet added to Review Board.')
+    ignore_revisions_button = _('Ignore selected')
+    showall_revisions_button = _('Include all')
+        
+    REVISIONS_CHOICE_HELP__SHOW = _('Click show to get a list of revisions which are not yet added to Review Board.')
     REVISIONS_CHOICE_HELP__UPDATE  = _('Add one or more revisions from the list below to your review request.')
     revisions_choice_help = REVISIONS_CHOICE_HELP__SHOW
 
@@ -369,7 +372,8 @@ class NewPostReviewRequestForm(forms.Form):
     def create(self, user, diff_file):        
         repository = self.cleaned_data['repository']
 
-        tool_fields = repository.get_scmtool().get_fields()
+        tool = repository.get_scmtool();
+        tool_fields = tool.get_fields()
 
         revisions_error_field = ''
                 
@@ -378,16 +382,29 @@ class NewPostReviewRequestForm(forms.Form):
             
         if 'revisions_choice' in tool_fields:
             revisions_error_field = 'revisions_choice' 
-              
-        if 'load_revisions_button' in self.data:
-            # User clicked on revisions_button
-            tool = repository.get_scmtool();
+            
+        any_revisions_choice_button_clicked = 'load_revisions_button' in self.data or 'ignore_revisions_button' in self.data or 'showall_revisions_button' in self.data
+            
+        if any_revisions_choice_button_clicked:
             if not (hasattr(tool, "support_post_commit_tracking") and tool.support_post_commit):
                 self.errors[revisions_error_field] = forms.util.ErrorList("Revision tracking is not supported by selected repository")
-                raise RevisionTableUpdated()
-                
-            tool = repository.get_scmtool();
-
+                raise RevisionTableUpdated()    
+            
+            
+        if 'showall_revisions_button' in self.data:
+            # User clicked on showall_revisions_button
+            tool.ignore_revisions(user.username, None)
+                    
+        if 'ignore_revisions_button' in self.data:
+            # User clicked on ignore_revisions_button
+            if 'revisions_choice' in self.cleaned_data:
+                revisions_to_be_ignored = []
+                for rev in self.cleaned_data['revisions_choice']:
+                    revisions_to_be_ignored.append(rev)
+                tool.ignore_revisions(user.username, revisions_to_be_ignored)
+        
+              
+        if any_revisions_choice_button_clicked:
             try:
                 missing_revisions = tool.get_missing_revisions(user.username)
             except Exception, e:

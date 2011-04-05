@@ -71,12 +71,19 @@
    </tr>
 
    <tr class="row_revisions_choice" border="1">
-    <td valign="baseline" border="1"><input id="load_revisions_button" type="submit" name="load_revisions_button" value="{{form.load_revisions_button}}" /></td> 
-    <td valign="baseline" colspan="2">{{form.revisions_choice_help}}</td>
+    <td border="1"><label for="id_revisions">My Pending Revisions:</label></td>
+    <td border="1"><input class="revisions_choice_button" type="submit" name="load_revisions_button" value="{{form.load_revisions_button}}"/> </td> 
+    <td border="1"><input class="revisions_choice_button" type="submit" name="ignore_revisions_button" value="{{form.ignore_revisions_button}}"/>
+		   <input class="revisions_choice_button" type="submit" name="showall_revisions_button" value="{{form.showall_revisions_button}}"/>
+    </td>
+   </tr>
+   <tr>
+    <td/> 
+    <td class="help" colspan="2">{{form.revisions_choice_help}}</td>
    </tr>
    <tr class="row_revisions_choice">
     <td class="revisions_choice_list"></td>
-    <td class="revisions_choice_list" valign="baseline" colspan="2" >
+    <td class="revisions_choice_list" valign="baseline" colspan="2">
       {{form.revisions_choice}}
     </td>
    </tr>
