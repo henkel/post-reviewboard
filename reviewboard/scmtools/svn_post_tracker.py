@@ -32,7 +32,9 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
     
     
     def get_fields(self):
-        return ['revisions', 'revisions_choice']
+        fields = SVNPostCommitTool.get_fields(self)
+        fields.append('revisions_choice')
+        return fields
     
     
     def get_missing_revisions(self, userid):

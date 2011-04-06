@@ -27,7 +27,9 @@ class SVNPostCommitTool(SVNTool):
     
     
     def get_fields(self):
-        return ['revisions']
+        fields = SVNTool.get_fields(self)
+        fields.append('revisions')
+        return fields
     
     
     def get_diffs_use_absolute_paths(self):
