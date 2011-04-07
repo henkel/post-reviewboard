@@ -14,7 +14,7 @@
     }
     #container {
       margin: 0 auto;
-      width: 700px;
+      width: 850px;
     }
     h1 { font-size: 3.8em; color: #103674; margin-bottom: 3px; }
     h1 .small { font-size: 0.4em; }
@@ -47,7 +47,7 @@
 <h2>Post-commit for Review Board</h2>
 <p>
 <ul>
-  <li>Web-based creation of post-commit requests</li>
+  <li>Web-based creation of post-commit review requests</li>
   <li>Smooth integration with Subversion repositories</li>
   <li>Select from revisions that are not yet added to Review Board</li>
   <li>Create request based on one or more revisions</li>
@@ -61,7 +61,7 @@
 <ul>
   <li>Install latest Review Board 1.5</li>
   <li>Download post-reviewboard and replace content of reviewboard folder</li>
-  <li>Login as Admin and add new SCM Tool "Subversion Post" with class name "reviewboard.scmtools.svn_post_tracker.SVNPostCommitTrackerTool"</li>
+  <li>Login as Admin and add a new SCM Tool "Subversion Post" with class name "reviewboard.scmtools.svn_post_tracker.SVNPostCommitTrackerTool"</li>
   <li>Edit your SVN repository and select repository type "Subversion Post"
   <li>Done!</li>
 </ul>
@@ -72,7 +72,7 @@
 <ul>
   <li>Allow exclusion of files from a request, e.g. XML UI descriptions</li>
   <li>Support more SCM tools, e.g. Perforce, Microsoft TFS</li>
-  <li>Contribute post commit feature to official project</li>
+  <li>Contribute the post commit feature to the official project</li>
 </ul>
 <br>
 </p>
@@ -80,7 +80,7 @@
 
 
 <h2>Want to Contribute?</h2>
-<p>Some years ago I implemented Perforce post-commit support. Later I integrated Microsoft TFS. However, I did not publish my changes at that time and now I don't use these SCM systems any longer. I think it is not much work to make my old SCM implementations run with post-reviewboard. I'm looking for contributors which would like to adapt the code and test it in real-life scenarios.
+<p>Some years ago I added Perforce post-commit support. Later I implemented Microsoft TFS support for Review Board. However, I did not publish my changes at that time and now I don't use these SCM systems any longer. I think it is not much work to make my old SCM implementations run with post-reviewboard. I'm looking for contributors which would like to adapt the code and test it in real-life scenarios.
 <br>
 </p>
 
