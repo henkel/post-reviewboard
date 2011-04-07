@@ -267,15 +267,15 @@ class SVNDiffTool:
                                 raise
                 
                 except Exception, e:
-                    raise SCMError(' Problem with ' + path +': '+ str(e))
+                    raise SCMError('Problem with ' + path +': '+ str(e))
         
             os.rmdir(temp_dir_name)
             
         except Exception, e:
-            raise SCMError(' Error creating diff: ' + str(e) )
+            raise SCMError('Error creating diff: ' + str(e) )
         
         if len(diff_lines) < 3:
-            raise SCMError(' There is no source code difference. The changes might consists of deletions only or neutralize themself. Binary files and folders are ignored completely.')
+            raise SCMError('There is no source code difference. The changes might consist of deletions only or neutralize each other. Binary files and folders are ignored completely.')
         
         return DiffFile(summary, description, str(''.join(diff_lines)))
     
