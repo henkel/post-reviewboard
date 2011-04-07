@@ -1,3 +1,13 @@
+post-reviewboard
+================
+
+This project realizes a ligh-weight extension of Review Board. It seamlessly 
+integrates Subversion post-commit support into the web user interface.
+
+More information is available on
+http://philipphenkel.github.com/post-reviewboard
+
+
 Review Board
 ============
 
