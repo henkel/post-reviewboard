@@ -38,7 +38,6 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
     
     
     def get_missing_revisions(self, userid):
-        
         # Fetch user's commits from repository
         revisions_in_repository = self._get_latest_revisions(userid, self.freshness_delta)
         
@@ -96,7 +95,6 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
         
         
     def _fetch_log_of_day(self, day, freshness_delta):
-
         if day == date.today():
             # Today - do not use cache
             return self._fetch_log_of_day_uncached(day)
@@ -142,7 +140,6 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
     
     
 def get_latest_revisions_added_to_reviewboard(userid, freshness_delta):
-    
     # Filter fresh requests
     # Our fresh revisions cannot be contained in old requests!
     # We don't have to consider any ReviewRequest which were last updated before the shown user revisions were created.

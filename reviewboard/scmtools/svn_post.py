@@ -225,22 +225,18 @@ class SVNDiffTool:
                 
 
             # Determine list of modified files including a modification status
-            modified_paths = {}
+            modifications = {}
             for revision in revision_list:
-                description += self._merge_revision_into_list_of_modified_files(revision, modified_paths)
+                description += self._merge_revision_into_modifications(revision, modifications)
                 
-            # Remove deleted files + folders and remove files that are located in deleted folders
-            modified_paths = remove_deleted_paths(modified_paths)
-            
+            # Remove deleted files + folders AND remove files that are located in deleted folders
+            modifications = remove_deleted_paths(modifications)
             
             temp_dir_name = tempfile.mkdtemp(prefix='reviewboard_svn_post.')    
                 
             # Create difference       
-            for path in modified_paths:
+            for path, status in modifications.iteritems():
                 try:                 
-                    status = modified_paths[path]
-                
-
                     if status.change_type == DiffStatus.ADDED:
                         diff_lines += self._get_diff_of_new_file(path, status.last_rev)
     
@@ -351,8 +347,7 @@ class SVNDiffTool:
         return diff_lines   
 
 
-    def _merge_revision_into_list_of_modified_files(self, revision, modified_files):
-
+    def _merge_revision_into_modifications(self, revision, modifications):
         revInfo = self.tool.get_revision_info(revision)
             
         if len(revInfo['changes']) == 0:
@@ -362,10 +357,10 @@ class SVNDiffTool:
             action = change['action']
             path = change['path']
             
-            if modified_files.has_key(path):
-                modified_files[path].update(revision, action)
+            if path in modifications:
+                modifications[path].update(revision, action)
             else:
-                modified_files[path] = DiffStatus(revision, action) 
+                modifications[path] = DiffStatus(revision, action) 
   
         submit_date = datetime.datetime.fromtimestamp(revInfo['date'])        
         time_str = submit_date.strftime("%Y-%m-%d %I:%M %p")
@@ -384,9 +379,9 @@ class SVNDiffTool:
         return description
     
     
-def remove_deleted_paths(modified_paths):
-    deleted_paths = [ path for path, status in modified_paths.iteritems() if status.change_type == DiffStatus.DELETED ]
-    all_paths = modified_paths.keys()
+def remove_deleted_paths(modifications):
+    deleted_paths = [ path for path, status in modifications.iteritems() if status.change_type == DiffStatus.DELETED ]
+    all_paths = modifications.keys()
     
     to_be_deleted = []
         
@@ -394,8 +389,8 @@ def remove_deleted_paths(modified_paths):
         to_be_deleted.append(parent)
         to_be_deleted.extend( filter(lambda p: p.startswith(parent+'/'), all_paths) )
     
-    modified_paths = dict( [ (path, status) for path, status in modified_paths.iteritems() if not path in to_be_deleted ] )      
-    return modified_paths
+    modifications = dict( [ (path, status) for path, status in modifications.iteritems() if not path in to_be_deleted ] )      
+    return modifications
 
         
     
