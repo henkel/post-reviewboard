@@ -135,7 +135,7 @@ class MyCommentsColumn(Column):
         # XXX It'd be nice to be able to sort on this, but datagrids currently
         # can only sort based on stored (in the DB) values, not computed values.
 
-    def augment_queryset(self, queryset):
+    def add_columns_to_queryset(self, queryset):
         user = self.datagrid.request.user
 
         if user.is_anonymous():
@@ -170,6 +170,9 @@ class MyCommentsColumn(Column):
                     AND reviews_review.ship_it
             """ % query_dict,
         })
+
+    def augment_queryset(self, queryset):
+        return self.add_columns_to_queryset(queryset)
 
     def render_data(self, review_request):
         user = self.datagrid.request.user
@@ -238,7 +241,7 @@ class SummaryColumn(Column):
         Column.__init__(self, label=label, *args, **kwargs)
         self.sortable = True
 
-    def augment_queryset(self, queryset):
+    def add_columns_to_queryset(self, queryset):
         user = self.datagrid.request.user
 
         if user.is_anonymous():
@@ -252,6 +255,9 @@ class SummaryColumn(Column):
                         reviews_reviewrequest.id
             """
         })
+        
+    def augment_queryset(self, queryset):
+        return self.add_columns_to_queryset(queryset)
 
     def render_data(self, review_request):
         summary = conditional_escape(review_request.summary)
@@ -305,12 +311,12 @@ class PeopleColumn(Column):
         Column.__init__(self, *args, **kwargs)
         self.label = _("People")
         self.detailed_label = _("Review People")
-        self.sortable = False
         self.shrink = False
+        #self.use_virtual_column_for_sorting = True
 
     def render_data(self, review_request):
-        people = review_request.target_people.all()       
-        return reduce(lambda a,d: a+d.username+' ', people, '')
+        people = [ person.username for person in review_request.target_people.all() ]
+        return ', '.join(people)
 
     
 class GroupsColumn(Column):
@@ -318,12 +324,23 @@ class GroupsColumn(Column):
         Column.__init__(self, *args, **kwargs)
         self.label = _("Groups")
         self.detailed_label = _("Review Groups")
-        self.sortable = False
         self.shrink = False
+        self.use_virtual_column_for_sorting = True
 
-    def render_data(self, review_request):
-        groups = review_request.target_groups.all()  
-        return reduce(lambda a,d: a+d.name+' ', groups, '')
+    
+    def add_columns_to_queryset(self, queryset):
+        return queryset.extra(select={
+            'review_groups': """
+                SELECT       GROUP_CONCAT(name ORDER BY name SEPARATOR ', ') 
+                FROM         reviews_reviewrequest_target_groups 
+                LEFT JOIN    reviews_group 
+                ON           group_id = reviews_group.id
+                WHERE        reviewrequest_id = reviews_reviewrequest.id
+            """
+        })
+        
+    def augment_queryset(self, queryset):
+        return self.add_columns_to_queryset(queryset)
 
 
 class GroupMemberCountColumn(Column):
@@ -358,7 +375,7 @@ class ReviewCountColumn(Column):
     def render_data(self, review_request):
         return str(review_request.publicreviewcount_count)
 
-    def augment_queryset(self, queryset):
+    def add_columns_to_queryset(self, queryset):
         return queryset.extra(select={
             'publicreviewcount_count': """
                 SELECT COUNT(*)
@@ -369,6 +386,9 @@ class ReviewCountColumn(Column):
                         reviews_reviewrequest.id
             """
         })
+        
+    def augment_queryset(self, queryset):
+        return self.add_columns_to_queryset(queryset)
 
     def link_to_object(self, review_request, value):
         return "%s#last-review" % review_request.get_absolute_url()
@@ -425,9 +445,10 @@ class ReviewRequestDataGrid(DataGrid):
 
     review_id = Column(_("Review ID"), field_name="id", db_field="id",
                        shrink=True, sortable=True, link=True)
-    
-    target_groups = GroupsColumn()
-    target_people = PeopleColumn()
+
+    review_groups = GroupsColumn()    
+    review_people = PeopleColumn()
+
 
     def __init__(self, *args, **kwargs):
         DataGrid.__init__(self, *args, **kwargs)
@@ -461,6 +482,8 @@ class ReviewRequestDataGrid(DataGrid):
         else:
             self.queryset = self.queryset.filter(status='P')
 
+        self.enableSortingOnVirtualColumns()
+
         if profile and self.show_submitted != profile.show_submitted:
             profile.show_submitted = self.show_submitted
             return True
@@ -476,6 +499,29 @@ class ReviewRequestDataGrid(DataGrid):
             return reverse("user", args=[value])
 
         return obj.get_absolute_url()
+    
+    # Support sorting on virtual columns
+    def enableSortingOnVirtualColumns(self):
+        # Mark virtual columns as sortable  
+        for column in self.all_columns:     
+            if hasattr(column, "use_virtual_column_for_sorting") and column.use_virtual_column_for_sorting:
+                column.sortable = True
+        
+        # Turn off optimization if sorting depends on virtual columns (created by extra)
+        self.optimize_sorts = True
+        sort_text = "".join(self.sort_list)
+        for column in self.all_columns:
+            if sort_text.find(column.id) != -1: 
+                if hasattr(column, "use_virtual_column_for_sorting") and column.use_virtual_column_for_sorting:
+                    # Virtual column is used for sorting
+                    self.optimize_sorts = False
+        
+        # If optimization is disabled augment_queryset is not called. Therefore we have to call add_columns_to_queryset for all columns.
+        if not self.optimize_sorts:
+            for column in self.all_columns:
+                if hasattr(column, "add_columns_to_queryset"):
+                    self.queryset = column.add_columns_to_queryset(self.queryset)
+
 
 
 class DashboardDataGrid(ReviewRequestDataGrid):
@@ -549,6 +595,8 @@ class DashboardDataGrid(ReviewRequestDataGrid):
         # Pre-load all querysets for the sidebar.
         self.counts = get_sidebar_counts(user)
 
+        self.enableSortingOnVirtualColumns()
+ 
         return False
 
 
