@@ -312,11 +312,24 @@ class PeopleColumn(Column):
         self.label = _("People")
         self.detailed_label = _("Review People")
         self.shrink = False
-        #self.use_virtual_column_for_sorting = True
+        self.use_virtual_column_for_sorting = True
 
     def render_data(self, review_request):
-        people = [ person.username for person in review_request.target_people.all() ]
-        return ', '.join(people)
+        return review_request.review_people or ''
+    
+    def add_columns_to_queryset(self, queryset):
+        return queryset.extra(select={
+            'review_people': """
+                SELECT       GROUP_CONCAT(username ORDER BY username SEPARATOR ', ') 
+                FROM         reviews_reviewrequest_target_people 
+                LEFT JOIN    auth_user 
+                ON           user_id = auth_user.id
+                WHERE        reviewrequest_id = reviews_reviewrequest.id
+            """
+        })
+        
+    def augment_queryset(self, queryset):
+        return self.add_columns_to_queryset(queryset)
 
     
 class GroupsColumn(Column):
@@ -327,11 +340,13 @@ class GroupsColumn(Column):
         self.shrink = False
         self.use_virtual_column_for_sorting = True
 
-    
+    def render_data(self, review_request):
+        return review_request.review_groups or ''
+        
     def add_columns_to_queryset(self, queryset):
         return queryset.extra(select={
             'review_groups': """
-                SELECT       GROUP_CONCAT(name ORDER BY name SEPARATOR ', ') 
+                SELECT       GROUP_CONCAT(name ORDER BY name SEPARATOR ', ')
                 FROM         reviews_reviewrequest_target_groups 
                 LEFT JOIN    reviews_group 
                 ON           group_id = reviews_group.id
