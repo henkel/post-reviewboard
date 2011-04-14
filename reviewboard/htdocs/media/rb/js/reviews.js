@@ -845,6 +845,13 @@ $.reviewForm = function(review) {
                 stretchY: true,
                 buttons: [
                     $('<input type="button"/>')
+                        .val("Publish & Close Review")                  // This feature is useful in post-commit scenario. TODO: Show this button only if right to close is given!
+                        .click(function(e) {
+                            $("#id_shipit", dlg)[0].checked = 1;
+                            saveReview(true, true);
+                            return false;
+                        }),
+                    $('<input type="button"/>')
                         .val("Publish Review")
                         .click(function(e) {
                             saveReview(true);
@@ -900,7 +907,7 @@ $.reviewForm = function(review) {
      *
      * This sets the shipit and body values, and saves all comments.
      */
-    function saveReview(publish) {
+    function saveReview(publish, closeReview) {
         $.funcQueue("reviewForm").clear();
 
         $(".body-top, .body-bottom").inlineEditor("save");
@@ -932,6 +939,15 @@ $.reviewForm = function(review) {
             }
             else {
                 review.save(options);
+            }
+
+        });
+
+        $.funcQueue("reviewForm").add(function() {
+            if (closeReview) {     
+                gReviewRequest.close({
+                    type: RB.ReviewRequest.CLOSE_SUBMITTED
+                });
             }
         });
 
