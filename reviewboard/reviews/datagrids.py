@@ -531,8 +531,11 @@ class ReviewRequestDataGrid(DataGrid):
                     # Virtual column is used for sorting
                     self.optimize_sorts = False
         
-        # If optimization is disabled augment_queryset is not called. Therefore we have to call add_columns_to_queryset for all columns.
         if not self.optimize_sorts:
+            # If optimization is disabled with_counts is not called. Therefore we have to call it now.
+            self.queryset = self.queryset.with_counts(self.request.user)
+
+            # If optimization is disabled augment_queryset is not called. Therefore we have to call add_columns_to_queryset for all columns.
             for column in self.all_columns:
                 if hasattr(column, "add_columns_to_queryset"):
                     self.queryset = column.add_columns_to_queryset(self.queryset)
