@@ -371,18 +371,18 @@ class NewPostReviewRequestForm(forms.Form):
 
 
     def create(self, user, diff_file):        
-        repository = self.cleaned_data['repository']
-
-        tool = repository.get_scmtool();
-        tool_fields = tool.get_fields()
-
+        tool = None
         revisions_error_field = ''
                 
-        if 'revisions' in tool_fields:
-            revisions_error_field = 'revisions'
-            
-        if 'revisions_choice' in tool_fields:
-            revisions_error_field = 'revisions_choice' 
+        repository = self.cleaned_data['repository']
+        
+        if repository != None:
+            tool = repository.get_scmtool();
+            tool_fields = tool.get_fields()
+            if 'revisions' in tool_fields:
+                revisions_error_field = 'revisions'            
+            if 'revisions_choice' in tool_fields:
+                revisions_error_field = 'revisions_choice' 
             
         any_revisions_choice_button_clicked = 'load_revisions_button' in self.data or 'ignore_revisions_button' in self.data or 'showall_revisions_button' in self.data
             
@@ -390,7 +390,6 @@ class NewPostReviewRequestForm(forms.Form):
             if not (hasattr(tool, "support_post_commit_tracking") and tool.support_post_commit):
                 self.errors[revisions_error_field] = forms.util.ErrorList("Revision tracking is not supported by selected repository")
                 raise RevisionTableUpdated()    
-            
             
         if 'showall_revisions_button' in self.data:
             # User clicked on showall_revisions_button
@@ -403,8 +402,7 @@ class NewPostReviewRequestForm(forms.Form):
                 for rev in self.cleaned_data['revisions_choice']:
                     revisions_to_be_ignored.append(rev)
                 tool.ignore_revisions(user.username, revisions_to_be_ignored)
-        
-              
+         
         if any_revisions_choice_button_clicked:
             try:
                 missing_revisions = tool.get_missing_revisions(user.username)
@@ -424,7 +422,6 @@ class NewPostReviewRequestForm(forms.Form):
    
             raise RevisionTableUpdated()
         
-        
         revision_list = []
                 
         if 'revisions' in self.cleaned_data:
@@ -442,12 +439,9 @@ class NewPostReviewRequestForm(forms.Form):
             # Eliminate duplicates    
             revision_list = list(set(revision_list))
 
-
         review_request = ReviewRequest.objects.create(user, repository)
 
-        if diff_file == None:
-            tool = repository.get_scmtool()
-
+        if diff_file == None and tool != None:
             try:
                 # Create diff file 
                 diff_file = tool.get_diff_file(revision_list) 
@@ -465,7 +459,6 @@ class NewPostReviewRequestForm(forms.Form):
             review_request.summary = diff_file.name
             review_request.description = diff_file.description
 
-           
         if diff_file:
             diff_form = UploadDiffForm(
                 review_request,
