@@ -255,7 +255,7 @@ class SummaryColumn(Column):
                         reviews_reviewrequest.id
             """
         })
-        
+
     def augment_queryset(self, queryset):
         return self.add_columns_to_queryset(queryset)
 
@@ -316,22 +316,22 @@ class PeopleColumn(Column):
 
     def render_data(self, review_request):
         return review_request.review_people or ''
-    
+
     def add_columns_to_queryset(self, queryset):
         return queryset.extra(select={
             'review_people': """
-                SELECT       GROUP_CONCAT(username ORDER BY username SEPARATOR ', ') 
-                FROM         reviews_reviewrequest_target_people 
-                LEFT JOIN    auth_user 
+                SELECT       GROUP_CONCAT(username ORDER BY username SEPARATOR ', ')
+                FROM         reviews_reviewrequest_target_people
+                LEFT JOIN    auth_user
                 ON           user_id = auth_user.id
                 WHERE        reviewrequest_id = reviews_reviewrequest.id
             """
         })
-        
+
     def augment_queryset(self, queryset):
         return self.add_columns_to_queryset(queryset)
 
-    
+
 class GroupsColumn(Column):
     def __init__(self, *args, **kwargs):
         Column.__init__(self, *args, **kwargs)
@@ -342,18 +342,18 @@ class GroupsColumn(Column):
 
     def render_data(self, review_request):
         return review_request.review_groups or ''
-        
+
     def add_columns_to_queryset(self, queryset):
         return queryset.extra(select={
             'review_groups': """
                 SELECT       GROUP_CONCAT(name ORDER BY name SEPARATOR ', ')
-                FROM         reviews_reviewrequest_target_groups 
-                LEFT JOIN    reviews_group 
+                FROM         reviews_reviewrequest_target_groups
+                LEFT JOIN    reviews_group
                 ON           group_id = reviews_group.id
                 WHERE        reviewrequest_id = reviews_reviewrequest.id
             """
         })
-        
+
     def augment_queryset(self, queryset):
         return self.add_columns_to_queryset(queryset)
 
@@ -401,7 +401,7 @@ class ReviewCountColumn(Column):
                         reviews_reviewrequest.id
             """
         })
-        
+
     def augment_queryset(self, queryset):
         return self.add_columns_to_queryset(queryset)
 
@@ -461,7 +461,7 @@ class ReviewRequestDataGrid(DataGrid):
     review_id = Column(_("Review ID"), field_name="id", db_field="id",
                        shrink=True, sortable=True, link=True)
 
-    review_groups = GroupsColumn()    
+    review_groups = GroupsColumn()
     review_people = PeopleColumn()
 
 
@@ -514,23 +514,23 @@ class ReviewRequestDataGrid(DataGrid):
             return reverse("user", args=[value])
 
         return obj.get_absolute_url()
-    
+
     # Support sorting on virtual columns
     def enableSortingOnVirtualColumns(self):
-        # Mark virtual columns as sortable  
-        for column in self.all_columns:     
+        # Mark virtual columns as sortable
+        for column in self.all_columns:
             if hasattr(column, "use_virtual_column_for_sorting") and column.use_virtual_column_for_sorting:
                 column.sortable = True
-        
+
         # Turn off optimization if sorting depends on virtual columns (created by extra)
         self.optimize_sorts = True
         sort_text = "".join(self.sort_list)
         for column in self.all_columns:
-            if sort_text.find(column.id) != -1: 
+            if sort_text.find(column.id) != -1:
                 if hasattr(column, "use_virtual_column_for_sorting") and column.use_virtual_column_for_sorting:
                     # Virtual column is used for sorting
                     self.optimize_sorts = False
-        
+
         if not self.optimize_sorts:
             # If optimization is disabled with_counts is not called. Therefore we have to call it now.
             self.queryset = self.queryset.with_counts(self.request.user)
@@ -550,7 +550,7 @@ class DashboardDataGrid(ReviewRequestDataGrid):
     """
     new_updates = NewUpdatesColumn()
     my_comments = MyCommentsColumn()
-    
+
 
     def __init__(self, *args, **kwargs):
         ReviewRequestDataGrid.__init__(self, *args, **kwargs)
@@ -614,7 +614,7 @@ class DashboardDataGrid(ReviewRequestDataGrid):
         self.counts = get_sidebar_counts(user)
 
         self.enableSortingOnVirtualColumns()
- 
+
         return False
 
 

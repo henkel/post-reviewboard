@@ -134,9 +134,9 @@ class CVSTests(DjangoTestCase):
         """Testing revision number parsing"""
         self.assertEqual(self.tool.parse_diff_revision('', 'PRE-CREATION')[1],
                          PRE_CREATION)
-        self.assertEqual(self.tool.parse_diff_revision('', '7 Nov 2005 13:17:07 -0000	1.2')[1],
+        self.assertEqual(self.tool.parse_diff_revision('', '7 Nov 2005 13:17:07 -0000   1.2')[1],
                          '1.2')
-        self.assertEqual(self.tool.parse_diff_revision('', '7 Nov 2005 13:17:07 -0000	1.2.3.4')[1],
+        self.assertEqual(self.tool.parse_diff_revision('', '7 Nov 2005 13:17:07 -0000   1.2.3.4')[1],
                          '1.2.3.4')
         self.assertRaises(SCMError,
                           lambda: self.tool.parse_diff_revision('', 'hello'))
@@ -166,8 +166,8 @@ class CVSTests(DjangoTestCase):
     def testBadDiff(self):
         """Testing parsing CVS diff with bad info"""
         diff = "Index: newfile\n===========================================" + \
-               "========================\ndiff -N newfile\n--- /dev/null	1" + \
-               "Jan 1970 00:00:00 -0000\n+++ newfile	26 Jul 2007 10:11:45 " + \
+               "========================\ndiff -N newfile\n--- /dev/null   1" + \
+               "Jan 1970 00:00:00 -0000\n+++ newfile   26 Jul 2007 10:11:45 " + \
                "-0000\n@@ -0,0 +1 @@\n+new file content"
 
         self.assertRaises(DiffParserError,
@@ -177,7 +177,7 @@ class CVSTests(DjangoTestCase):
         """Testing parsing CVS bad diff with new file"""
         diff = "Index: newfile\n===========================================" + \
                "========================\nRCS file: newfile\ndiff -N newfil" + \
-               "e\n--- /dev/null\n+++ newfile	2" + \
+               "e\n--- /dev/null\n+++ newfile   2" + \
                "6 Jul 2007 10:11:45 -0000\n@@ -0,0 +1 @@\n+new file content"
 
         self.assertRaises(DiffParserError,
@@ -187,7 +187,7 @@ class CVSTests(DjangoTestCase):
         """Testing parsing CVS diff with new file"""
         diff = "Index: newfile\n===========================================" + \
                "========================\nRCS file: newfile\ndiff -N newfil" + \
-               "e\n--- /dev/null	1 Jan 1970 00:00:00 -0000\n+++ newfile	2" + \
+               "e\n--- /dev/null   1 Jan 1970 00:00:00 -0000\n+++ newfile   2" + \
                "6 Jul 2007 10:11:45 -0000\n@@ -0,0 +1 @@\n+new file content\n"
 
         file = self.tool.get_parser(diff).parse()[0]
