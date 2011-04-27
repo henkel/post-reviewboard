@@ -925,6 +925,15 @@ $.reviewForm = function(review) {
         });
 
         $.funcQueue("reviewForm").add(function() {
+            if (closeReview) {   
+                gReviewRequest.close({
+                    type: RB.ReviewRequest.CLOSE_SUBMITTED
+                });
+            }
+            $.funcQueue("reviewForm").next();
+        });
+
+        $.funcQueue("reviewForm").add(function() {
             review.shipit = $("#id_shipit", dlg)[0].checked ? 1 : 0;
             review.body_top = $(".body-top", dlg).text();;
             review.body_bottom = $(".body-bottom", dlg).text();;
@@ -941,14 +950,6 @@ $.reviewForm = function(review) {
                 review.save(options);
             }
 
-        });
-
-        $.funcQueue("reviewForm").add(function() {
-            if (closeReview) {     
-                gReviewRequest.close({
-                    type: RB.ReviewRequest.CLOSE_SUBMITTED
-                });
-            }
         });
 
         $.funcQueue("reviewForm").add(function() {
