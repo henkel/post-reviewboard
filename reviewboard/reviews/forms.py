@@ -295,7 +295,7 @@ class MultiChoiceWithoutValidation(forms.MultipleChoiceField):
     def validate(self, value):
         # Choices are created dynamically and cannot be validated
         pass
-    
+
 
 class NewPostReviewRequestForm(forms.Form):
     """
@@ -311,30 +311,30 @@ class NewPostReviewRequestForm(forms.Form):
         queryset=Repository.objects.filter(visible=True).order_by('name'),
         empty_label=NO_REPOSITORY_ENTRY,
         required=False)
-    
+
     # match ' 23 42 3343 ' or ' 23, 34 , 235235 '
-    revisions = forms.RegexField(regex=r'^(\s*[A-F,a-f,0-9]+\s*,{0,1}\s*)+$', 
-                                 label=_('List of Revisions'), 
-                                 max_length=2048, 
-                                 required=False, 
+    revisions = forms.RegexField(regex=r'^(\s*[A-F,a-f,0-9]+\s*,{0,1}\s*)+$',
+                                 label=_('List of Revisions'),
+                                 max_length=2048,
+                                 required=False,
                                  widget=forms.TextInput(attrs={'size':'50'}),
                                  help_text=_('A list of revision identifiers, e.g. 11235 57789 34567'))
 
-    revisions_choice = MultiChoiceWithoutValidation(required=False, widget=forms.CheckboxSelectMultiple) 
-     
+    revisions_choice = MultiChoiceWithoutValidation(required=False, widget=forms.CheckboxSelectMultiple)
+
     LOAD_REVISIONS_BUTTON__SHOW = _('Get Revisions')
     LOAD_REVISIONS_BUTTON__UPDATE = _('Refresh Revisions')
     load_revisions_button = LOAD_REVISIONS_BUTTON__SHOW
-    
+
     ignore_revisions_button = _('Ignore selected')
     showall_revisions_button = _('Include all')
-        
+
     REVISIONS_CHOICE_HELP__SHOW = _('Click show to get a list of revisions which are not yet added to Review Board.')
     REVISIONS_CHOICE_HELP__UPDATE  = _('Add one or more revisions from the list below to your review request.')
     revisions_choice_help = REVISIONS_CHOICE_HELP__SHOW
 
     field_mapping = {}
-    
+
 
     def __init__(self, *args, **kwargs):
         forms.Form.__init__(self, *args, **kwargs)
@@ -367,34 +367,34 @@ class NewPostReviewRequestForm(forms.Form):
         # If we have any repository entries we can show, then we should
         # show the first one, rather than the "None" entry.
         if len(valid_repos) > 1:
-            self.fields['repository'].initial = valid_repos[1][0]  
+            self.fields['repository'].initial = valid_repos[1][0]
 
 
-    def create(self, user, diff_file):        
+    def create(self, user, diff_file):
         tool = None
         revisions_error_field = ''
-                
+
         repository = self.cleaned_data['repository']
-        
+
         if repository != None:
             tool = repository.get_scmtool();
             tool_fields = tool.get_fields()
             if 'revisions' in tool_fields:
-                revisions_error_field = 'revisions'            
+                revisions_error_field = 'revisions'
             if 'revisions_choice' in tool_fields:
-                revisions_error_field = 'revisions_choice' 
-            
+                revisions_error_field = 'revisions_choice'
+
         any_revisions_choice_button_clicked = 'load_revisions_button' in self.data or 'ignore_revisions_button' in self.data or 'showall_revisions_button' in self.data
-            
+
         if any_revisions_choice_button_clicked:
             if not (hasattr(tool, "support_post_commit_tracking") and tool.support_post_commit):
                 self.errors[revisions_error_field] = forms.util.ErrorList("Revision tracking is not supported by selected repository")
-                raise RevisionTableUpdated()    
-            
+                raise RevisionTableUpdated()
+
         if 'showall_revisions_button' in self.data:
             # User clicked on showall_revisions_button
             tool.ignore_revisions(user.username, None)
-                    
+
         if 'ignore_revisions_button' in self.data:
             # User clicked on ignore_revisions_button
             if 'revisions_choice' in self.cleaned_data:
@@ -402,14 +402,14 @@ class NewPostReviewRequestForm(forms.Form):
                 for rev in self.cleaned_data['revisions_choice']:
                     revisions_to_be_ignored.append(rev)
                 tool.ignore_revisions(user.username, revisions_to_be_ignored)
-         
+
         if any_revisions_choice_button_clicked:
             try:
                 missing_revisions = tool.get_missing_revisions(user.username)
             except Exception, e:
                 self.errors[revisions_error_field] = forms.util.ErrorList([str(e)])
                 raise e
-            
+
             if len(missing_revisions) == 0:
                 self.fields['revisions_choice'].choices = []
                 self.cleaned_data['revisions_choice'] = []
@@ -419,33 +419,33 @@ class NewPostReviewRequestForm(forms.Form):
                 self.fields['revisions_choice'].choices = [ (rev[0], rev[0]+' '+rev[1]) for rev in missing_revisions ]
                 self.load_revisions_button = self.LOAD_REVISIONS_BUTTON__UPDATE
                 self.revisions_choice_help = self.REVISIONS_CHOICE_HELP__UPDATE
-   
+
             raise RevisionTableUpdated()
-        
+
         revision_list = []
-                
+
         if 'revisions' in self.cleaned_data:
             split_field = re.split('\s*,{0,1}\s*', self.cleaned_data['revisions'])
             for rev in split_field:
                 if rev.strip() != '':
                     revision_list.append(rev)
-        
+
         if 'revisions_choice' in self.cleaned_data:
             for rev in self.cleaned_data['revisions_choice']:
                 revision_list.append(rev)
                 self.data['revisions'] += ' ' + str(rev)
-                
+
         if len(revision_list) > 0:
-            # Eliminate duplicates    
+            # Eliminate duplicates
             revision_list = list(set(revision_list))
 
         review_request = ReviewRequest.objects.create(user, repository)
 
         if diff_file == None and tool != None:
             try:
-                # Create diff file 
-                diff_file = tool.get_diff_file(revision_list) 
-            
+                # Create diff file
+                diff_file = tool.get_diff_file(revision_list)
+
             except ChangeSetError, e:
                 review_request.delete()
                 self.errors[revisions_error_field] = forms.util.ErrorList("Could not create diff for specified revisions: " + str(e))
@@ -453,8 +453,8 @@ class NewPostReviewRequestForm(forms.Form):
             except Exception, e:
                 review_request.delete()
                 self.errors[revisions_error_field] = forms.util.ErrorList([e])
-                raise            
-                
+                raise
+
             # Update summary and description
             review_request.summary = diff_file.name
             review_request.description = diff_file.description
@@ -488,7 +488,7 @@ class NewPostReviewRequestForm(forms.Form):
                 review_request.delete()
                 self.errors[revisions_error_field] = forms.util.ErrorList([
                     'The selected file does not appear to be a diff.'])
-                raise    
+                raise
             except Exception, e:
                 review_request.delete()
                 self.errors[revisions_error_field] = forms.util.ErrorList([e])

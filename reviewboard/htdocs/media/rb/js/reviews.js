@@ -247,7 +247,7 @@ function publishDraft() {
     if ($.trim($("#target_groups").html()) == "" &&
         $.trim($("#target_people").html()) == "") {
         alert("There must be at least one reviewer or group " +
-	      "before this review request can be published.");
+              "before this review request can be published.");
     } else if ($.trim($("#summary").html()) == "") {
         alert("The draft must have a summary.");
     } else if ($.trim($("#description").html()) == "") {
@@ -925,7 +925,7 @@ $.reviewForm = function(review) {
         });
 
         $.funcQueue("reviewForm").add(function() {
-            if (closeReview) {   
+            if (closeReview) {
                 gReviewRequest.close({
                     type: RB.ReviewRequest.CLOSE_SUBMITTED
                 });

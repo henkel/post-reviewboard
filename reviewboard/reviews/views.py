@@ -106,7 +106,7 @@ def new_post_review_request(request,
         'form': form,
         'fields': simplejson.dumps(form.field_mapping),
     }))
-    
+
 
 def make_review_request_context(review_request, extra_context):
     """Returns a dictionary for template contexts used for review requests.
