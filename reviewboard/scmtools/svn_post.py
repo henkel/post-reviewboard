@@ -162,7 +162,7 @@ class DiffStatus:
         new_rev = int(new_rev)
 
         if (new_rev <= self.last_rev):
-            raise SCMError('Please apply diff updates in order of change lists and do not apply a diff twice')
+            raise SCMError('Please apply diff updates in sequential order and do not apply a diff twice')
 
         self.last_rev = new_rev
 
