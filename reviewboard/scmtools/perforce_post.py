@@ -2,7 +2,6 @@ import re
 import subprocess
 import os
 import sys
-import time
 import datetime
 import urllib
 
@@ -16,10 +15,6 @@ from django.core.cache import cache
 class PerforcePostCommitTool(PerforceTool):
     name = "Perforce Post Commit" 
     support_post_commit = True
-
-    EMPTY_FILE = '<FILE IS EMPTY>'
-    DELETED_FILE = '<FILE IS DELETED>'
-
     
     def __init__(self, repository):
         PerforceTool.__init__(self, repository)
@@ -213,7 +208,13 @@ class PerforceDiffTool:
             fd, tmp_diff_to_filename = mkstemp(dir=temp_dir_name)
             os.close(fd)
     
-    
+            def cleanup():
+                os.unlink(empty_filename)
+                os.unlink(tmp_diff_from_filename)
+                os.unlink(tmp_diff_to_filename)
+                os.rmdir(temp_dir_name)
+                self.tool._disconnect()
+            
             cwd = os.getcwd()
         
             diff_lines = []
@@ -221,24 +222,19 @@ class PerforceDiffTool:
             for filename in modified_files:
                 status = modified_files[filename]
                 
-                if status.first_rev == 0 and status.change_type == DiffStatus.DELETED:
-                    # Skip added files that were deleted again
+                if status.change_type == DiffStatus.DELETED:
+                    # Skip all files
                     pass
                 else: 
                     old_file, new_file = self._populate_temp_files(filename, status.first_rev,  status.last_rev, status.change_type,  False,  empty_filename,  tmp_diff_from_filename,  tmp_diff_to_filename)
                     diff_lines += self._diff_file(old_file, new_file, filename,  filename,  status.first_rev,  status.change_type,  cwd)
 
-            # Clean-up
-            os.unlink(empty_filename)
-            os.unlink(tmp_diff_from_filename)
-            os.unlink(tmp_diff_to_filename)
-            os.rmdir(temp_dir_name)
-            
-            self.tool._disconnect()
+
+            cleanup()
             return DiffFile(summary, description, ''.join(diff_lines))
         
         except Exception, e:
-            self.tool._disconnect()
+            cleanup()
             raise SCMError('Error creating diff: ' + str(e) )
 
 
@@ -307,7 +303,7 @@ class PerforceDiffTool:
             old_file = tmp_diff_from_filename
             
             f = open(tmp_diff_to_filename, "w")
-            f.write(self.tool.DELETED_FILE)
+            f.write('<FILE IS DELETED>')
             f.close()
             new_file = tmp_diff_to_filename
 
