@@ -4,13 +4,14 @@ import os
 import sys
 import time
 import datetime
-
+import urllib
 
 from tempfile import mkstemp, mkdtemp
 
 from reviewboard.scmtools.perforce import PerforceTool
-from reviewboard.scmtools.errors import SCMError, EmptyChangeSetError, ChangeSetError
+from reviewboard.scmtools.errors import SCMError
 
+from django.core.cache import cache
 
 class PerforcePostCommitTool(PerforceTool):
     name = "Perforce Post Commit" 
@@ -33,6 +34,25 @@ class PerforcePostCommitTool(PerforceTool):
             raise SCMError('List of changelist numbers is empty')
         diff_tool = PerforceDiffTool(self)
         return diff_tool.get_diff_file(change_numbers)
+    
+    def get_changedesc(self, change_number):
+        cache_key = 'perforce_post_get_changedesc.'+ urllib.quote(str(self.repository.path)) +'.'+ str(change_number)
+        res = cache.get(cache_key)
+        if res != None:
+            return res
+
+        try:
+            changedesc = self.p4.run_describe('-s', change_number)
+        except Exception, e:
+            raise SCMError('Perforce error: ' + str(e))
+        
+        if len(changedesc) == 0:
+            raise SCMError('Change '+str(change_number)+ ' not found')
+
+        changedesc = changedesc[0]
+        
+        cache.set(cache_key, changedesc, 60*60*24*7)
+        return changedesc
 
         
 # TODO refactor DiffStatus from perforce_post and svn_post into another file, e.g. PostCommitUtils  
@@ -71,7 +91,7 @@ class DiffStatus:
         new_rev = int(new_rev)
         
         if (new_rev <= self.last_rev):
-            raise ChangeSetError('Please apply diff updates in sequential order and do not apply a diff twice')
+            raise SCMError('Please apply diff updates in sequential order and do not apply a diff twice')
         
         self.last_rev = new_rev
 
@@ -170,6 +190,15 @@ class PerforceDiffTool:
             
             changelist_numbers.sort()
 
+            if len(changelist_numbers) != 1:
+                summary = ''  # user should give a summary
+            else:
+                # Use commit message as summary
+                changedesc = self.tool.get_changedesc(changelist_numbers[0])
+                desc = changedesc['desc'].splitlines(True)
+                if len(desc) > 0:
+                    summary = desc[0].strip()
+
             modified_files = { }
             description = ''
             for changelist_no in changelist_numbers:
@@ -206,7 +235,7 @@ class PerforceDiffTool:
             os.rmdir(temp_dir_name)
             
             self.tool._disconnect()
-            return DiffFile('summary TODO', description, ''.join(diff_lines))
+            return DiffFile(summary, description, ''.join(diff_lines))
         
         except Exception, e:
             self.tool._disconnect()
@@ -214,15 +243,8 @@ class PerforceDiffTool:
 
 
     def merge_changelist_into_list_of_modified_files(self, changelist_no, modified_files):
-        try:
-            changedesc = self.tool.p4.run_describe('-s', str(changelist_no))
-        except Exception, e:
-            raise SCMError('Perforce Error: ' + str(e))
-                    
-        if len(changedesc) == 0:
-            raise SCMError('CL does not exist')
-
-        changedesc = changedesc[0]
+        
+        changedesc = self.tool.get_changedesc(str(changelist_no))
         
         if changedesc['status'] == 'pending':
             raise SCMError('pending CLs are not supported')
@@ -239,16 +261,23 @@ class PerforceDiffTool:
                 modified_files[path].update(changedesc['rev'][idx], changedesc['action'][idx])
             else:
                 modified_files[path] = DiffStatus(changedesc['rev'][idx], changedesc['action'][idx]) 
-  
-
-       # submit_time = time.ctime(int(changedesc['time']))
-        
+   
         submit_date = datetime.datetime.fromtimestamp(int(changedesc['time']))        
-        time_str = submit_date.strftime("%Y/%m/%d %I:%M %p")
-
-        description =  'Change ' + changedesc['change'] + ' by ' + changedesc['user'] + '@' + changedesc['client'] + ' on ' + time_str +'\n'
-        description += '       ' + changedesc['desc']
+        time_str = submit_date.strftime("%Y-%m-%d %I:%M %p")
         
+        description = changedesc['change'] + ' by ' + changedesc['user'] + '@' + changedesc['client'] + ' on ' + time_str + '\n'
+        indent = ''
+        
+        for _ in range(1 + len(changedesc['change'])):
+            indent += ' '
+
+        desclines = changedesc['desc'].splitlines(True)
+        
+        for line in desclines:
+            description += indent + line.strip()
+            
+        description += '\n\n'
+                
         return description
     
     
