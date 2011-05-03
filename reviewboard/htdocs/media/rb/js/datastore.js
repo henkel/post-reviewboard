@@ -298,12 +298,14 @@ $.extend(RB.ReviewRequest.prototype, {
         if (options.type == RB.ReviewRequest.CLOSE_DISCARDED) {
             this._apiCall({
                 path: "/close/discarded/",
-                buttons: options.buttons
+                buttons: options.buttons,
+                success: options.success
             });
         } else if (options.type == RB.ReviewRequest.CLOSE_SUBMITTED) {
             this._apiCall({
                 path: "/close/submitted/",
-                buttons: options.buttons
+                buttons: options.buttons,
+                success: options.success
             });
         }
     },
