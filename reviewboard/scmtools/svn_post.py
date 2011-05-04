@@ -367,14 +367,11 @@ class SVNDiffTool:
 
         description = str(revision) + ' by ' + revInfo['user'] + ' on ' + time_str +'\n'
 
-        indent = ''
-        for _ in range(1 + len(str(revision))):
-            indent += ' '
-
+        indent = ''.ljust(1 + len(str(revision)))
         desclines = revInfo['description'].splitlines(True)
         for line in desclines:
-            description += indent + line.strip()
-        description += '\n\n'
+            description += indent + line.rstrip() + '\n'
+        description += '\n'
 
         return description
 

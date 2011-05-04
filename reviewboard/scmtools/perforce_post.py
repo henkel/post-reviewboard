@@ -262,17 +262,12 @@ class PerforceDiffTool:
         time_str = submit_date.strftime("%Y-%m-%d %I:%M %p")
         
         description = changedesc['change'] + ' by ' + changedesc['user'] + '@' + changedesc['client'] + ' on ' + time_str + '\n'
-        indent = ''
-        
-        for _ in range(1 + len(changedesc['change'])):
-            indent += ' '
 
-        desclines = changedesc['desc'].splitlines(True)
-        
+        indent = ''.ljust(1 + len(changedesc['change']))
+        desclines = changedesc['desc'].splitlines(True) 
         for line in desclines:
-            description += indent + line.strip()
-            
-        description += '\n\n'
+            description += indent + line.rstrip() + '\n'
+        description += '\n'
                 
         return description
     
