@@ -264,7 +264,7 @@ class PerforceDiffTool:
         description = changedesc['change'] + ' by ' + changedesc['user'] + '@' + changedesc['client'] + ' on ' + time_str + '\n'
 
         indent = ''.ljust(1 + len(changedesc['change']))
-        desclines = changedesc['desc'].splitlines(True) 
+        desclines = changedesc['desc'].splitlines() 
         for line in desclines:
             description += indent + line.rstrip() + '\n'
         description += '\n'

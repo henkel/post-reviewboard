@@ -217,9 +217,9 @@ class SVNDiffTool:
             if len(revision_list) != 1:
                 summary = ''  # user should give a summary
             else:
-                # Use commit message as summary
+                # Use first line of commit message as summary
                 revInfo = self.tool.get_revision_info(revision_list[0])
-                desc = revInfo['description'].splitlines(True)
+                desc = revInfo['description'].splitlines()
                 if len(desc) > 0:
                     summary = desc[0].strip()
 
@@ -368,7 +368,7 @@ class SVNDiffTool:
         description = str(revision) + ' by ' + revInfo['user'] + ' on ' + time_str +'\n'
 
         indent = ''.ljust(1 + len(str(revision)))
-        desclines = revInfo['description'].splitlines(True)
+        desclines = revInfo['description'].splitlines()
         for line in desclines:
             description += indent + line.rstrip() + '\n'
         description += '\n'
