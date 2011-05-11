@@ -87,7 +87,10 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
             
             submit_date = datetime.fromtimestamp(entry['date'])      
             date_str = submit_date.strftime("%Y-%m-%d")
-            desc = 'on ' +date_str + ' : ' +entry['revprops']['svn:log']
+            
+            message = entry['message'] or '' 
+            msg = message.splitlines()[0].strip()
+            desc = 'on ' +date_str + ' : ' + msg
             log.append(( str(entry['revision'].number), 
                          entry['author'], 
                          desc))
