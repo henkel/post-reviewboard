@@ -215,26 +215,28 @@ class PerforceDiffTool:
                 os.rmdir(temp_dir_name)
                 self.tool._disconnect()
             
-            cwd = os.getcwd()
+            try:
+                cwd = os.getcwd()
         
-            diff_lines = []
+                diff_lines = []
         
-            for filename in modified_files:
-                status = modified_files[filename]
+                for filename in modified_files:
+                    status = modified_files[filename]
                 
-                if status.change_type == DiffStatus.DELETED:
-                    # Skip all files
-                    pass
-                else: 
-                    old_file, new_file = self._populate_temp_files(filename, status.first_rev,  status.last_rev, status.change_type,  False,  empty_filename,  tmp_diff_from_filename,  tmp_diff_to_filename)
-                    diff_lines += self._diff_file(old_file, new_file, filename,  filename,  status.first_rev,  status.change_type,  cwd)
+                    if status.change_type == DiffStatus.DELETED:
+                        # Skip all files
+                        pass
+                    else: 
+                        old_file, new_file = self._populate_temp_files(filename, status.first_rev,  status.last_rev, status.change_type,  False,  empty_filename,  tmp_diff_from_filename,  tmp_diff_to_filename)
+                        diff_lines += self._diff_file(old_file, new_file, filename,  filename,  status.first_rev,  status.change_type,  cwd)
 
-
-            cleanup()
-            return DiffFile(summary, description, ''.join(diff_lines))
+                cleanup()
+                return DiffFile(summary, description, ''.join(diff_lines))
+            except Exception, e:
+                cleanup()
+                raise
         
         except Exception, e:
-            cleanup()
             raise SCMError('Error creating diff: ' + str(e) )
 
 
