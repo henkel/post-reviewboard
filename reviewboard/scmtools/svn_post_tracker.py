@@ -23,7 +23,6 @@ from django.core.cache import cache
 
 class SVNPostCommitTrackerTool(SVNPostCommitTool):
     name = "Subversion Post Commit Tracker"
-    support_post_commit_tracking = True
     
     freshness_delta = timedelta(days=21)
     

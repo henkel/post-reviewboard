@@ -387,7 +387,7 @@ class NewPostReviewRequestForm(forms.Form):
         any_revisions_choice_button_clicked = 'load_revisions_button' in self.data or 'ignore_revisions_button' in self.data or 'showall_revisions_button' in self.data
 
         if any_revisions_choice_button_clicked:
-            if not (hasattr(tool, "support_post_commit_tracking") and tool.support_post_commit):
+            if not 'revisions_choice' in tool_fields:
                 self.errors[revisions_error_field] = forms.util.ErrorList("Revision tracking is not supported by selected repository")
                 raise RevisionTableUpdated()
 

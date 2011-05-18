@@ -11,7 +11,6 @@ from reviewboard.reviews.models import ReviewRequest
 
 class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
     name = "Perforce Post Commit Tracker"
-    support_post_commit_tracking = True
     
     freshness_delta = timedelta(days=21)
     
@@ -20,7 +19,7 @@ class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
 
     def get_fields(self):
         fields = PerforcePostCommitTool.get_fields(self)
-        fields.append('revisions_choice')
+        #fields.append('revisions_choice')
         return fields
     
     
