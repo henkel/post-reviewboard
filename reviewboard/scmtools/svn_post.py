@@ -263,6 +263,7 @@ class SVNDiffTool:
                                 raise
 
                 except Exception, e:
+                    os.rmdir(temp_dir_name)
                     raise SCMError('Problem with ' + path +': '+ str(e))
 
             os.rmdir(temp_dir_name)
