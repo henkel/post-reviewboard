@@ -12,7 +12,7 @@ from datetime import datetime, date, timedelta
 from reviewboard.scmtools.svn_post import SVNPostCommitTool
 from reviewboard.scmtools.errors import SCMError
 from reviewboard.reviews.models import ReviewRequest
-
+from reviewboard.scmtools.post_utils import get_known_revisions
 
 try:
     from pysvn import Revision, opt_revision_kind
@@ -54,10 +54,10 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
         commits = self._get_latest_commits(userid, self.freshness_delta)
         
         # Fetch the already contained
-        known_revisions = post_utils.get_known_revisions(userid, 
-                                                         self.repository, 
-                                                         self.freshness_delta, 
-                                                         extract_revision_user)
+        known_revisions = get_known_revisions(userid, 
+                                              self.repository, 
+                                              self.freshness_delta, 
+                                              extract_revision_user)
         
         # Fetch revisions to be ignored
         cache_key = 'svn_post_tracker_ignore.'+ urllib.quote(self.repopath) +'.'+ userid

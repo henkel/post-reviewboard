@@ -4,6 +4,8 @@
 from reviewboard.scmtools.errors import SCMError
 from reviewboard.scmtools.svn import SVNTool
 from reviewboard.scmtools.core import HEAD
+from reviewboard.scmtools.post_utils import DiffFile
+
 import datetime
 import os
 import pysvn
@@ -64,8 +66,8 @@ class SVNPostCommitTool(SVNTool):
         revisionInfo = {'revision': revision,
                         'user': logs[0].author or '',
                         'description': logs[0].message or '',
-                        'changes':changes,
-                        'date':logs[0].date}
+                        'changes': changes,
+                        'date': logs[0].date}
 
         cache.set(cache_key, revisionInfo, 60*60*24*7)
         return revisionInfo
@@ -117,16 +119,6 @@ class SVNPostCommitTool(SVNTool):
             normalized.append({'path':cpath['path'], 'action': cpath['action']} )
         return normalized
 
-
-class DiffFile:
-    def __init__(self, name, description, data):
-        self.name = name
-        self.description = description
-        self.data = data
-
-
-    def read(self):
-        return self.data
 
 # Requirement: Update DiffStatus in sequentially (order of change list numbers)
 class DiffStatus:

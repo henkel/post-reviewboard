@@ -5,6 +5,8 @@ import sys
 import datetime
 import urllib
 
+from post_utils import DiffFile
+
 from tempfile import mkstemp, mkdtemp
 
 from reviewboard.scmtools.perforce import PerforceTool
@@ -117,18 +119,6 @@ class DiffStatus:
             elif new_type == self.MODIFIED:             
                 self.change_type = self.MODIFIED        # Ignore delete if file was re-added and is modified now
                 
-
-# TODO refactor DiffStatus from perforce_post and svn_post into another file, e.g. PostCommitUtils  
-class DiffFile:
-    def __init__(self, name, description, data):
-        self.name = name
-        self.description = description
-        self.data = data
-
-
-    def read(self):
-        return self.data
-
 
 def execute(command, env=None, split_lines=False, ignore_errors=False,
             extra_ignore_errors=()):
