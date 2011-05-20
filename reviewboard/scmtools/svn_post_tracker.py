@@ -5,6 +5,8 @@ import pysvn
 import time
 import urllib
 
+import post_utils
+
 from datetime import datetime, date, timedelta
 
 from reviewboard.scmtools.svn_post import SVNPostCommitTool
@@ -19,6 +21,17 @@ except ImportError:
 
 from django.core.cache import cache
 
+
+
+def extract_revision_user(line):
+    # Try to extract revision info tuple (rev, user) from line
+    # Revision info example: "116855 by henkel on 2011-03-24 11:30 AM"
+    words = line.split(' ',  4)
+                
+    if len(words)>=4 and words[0].isdigit() and words[1] == 'by' and words[3] == 'on':
+        return (words[0], words[2])
+    
+    return None
 
 
 class SVNPostCommitTrackerTool(SVNPostCommitTool):
@@ -38,10 +51,13 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
     
     def get_missing_revisions(self, userid):
         # Fetch user's commits from repository
-        revisions_in_repository = self._get_latest_revisions(userid, self.freshness_delta)
+        commits = self._get_latest_commits(userid, self.freshness_delta)
         
         # Fetch the already contained
-        revision_numbers_in_reviewboard = get_latest_revisions_added_to_reviewboard(userid, self.freshness_delta)
+        known_revisions = post_utils.get_known_revisions(userid, 
+                                                         self.repository, 
+                                                         self.freshness_delta, 
+                                                         extract_revision_user)
         
         # Fetch revisions to be ignored
         cache_key = 'svn_post_tracker_ignore.'+ urllib.quote(self.repopath) +'.'+ userid
@@ -49,9 +65,9 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
         to_be_ignored = [item for sublist in ignore_lists for item in sublist]        
         
         # Revision exclusion predicate
-        isExcluded = lambda rev : rev in revision_numbers_in_reviewboard or rev in to_be_ignored
+        isExcluded = lambda rev : rev in known_revisions or rev in to_be_ignored
         
-        return [ rev for rev in revisions_in_repository if not isExcluded(rev[0]) ]
+        return [ rev for rev in commits if not isExcluded(rev[0]) ]
 
 
     def ignore_revisions(self, userid, new_revisions_to_be_ignored):
@@ -124,7 +140,7 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
         return log_entries
     
     
-    def _get_latest_revisions(self, userid, freshness_delta):
+    def _get_latest_commits(self, userid, freshness_delta):
         log_entries = self._fetch_latest_log(freshness_delta) 
         user_revs = []
                 
@@ -139,39 +155,6 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
             raise SCMError('Error fetching revisions: ' +str(e))
         
         return user_revs
-    
-    
-def get_latest_revisions_added_to_reviewboard(userid, freshness_delta):
-    # Filter fresh requests
-    # Our fresh revisions cannot be contained in old requests!
-    # We don't have to consider any ReviewRequest which were last updated before the shown user revisions were created.
-    first_day = date.today()-freshness_delta
-    requests = ReviewRequest.objects.filter(last_updated__gte=first_day.strftime("%Y-%m-%d"))
-    
-    revisions = []
-    for request in requests:
-        if request.status == ReviewRequest.DISCARDED:
-            # skip request
-            continue
-        
-        # Parse description to find revision numbers
-        lc_userid = userid.lower()
-        desc = request.description 
-        for line in desc.splitlines(True):
-            rev_user = parse_review_request_description(line)
-            if rev_user != None and rev_user[1].lower() == lc_userid: # case-insensitive comparison
-                revisions.append(rev_user[0])
-     
-    return set(revisions)
-    
 
-def parse_review_request_description(line):
-    # Try to extract revision info tuple (rev, user) from line
-    # Revision info example: "116855 by henkel on 2011-03-24 11:30 AM"
-    words = line.split(' ',  4)
-                
-    if len(words)>=4 and words[0].isdigit() and words[1] == 'by' and words[3] == 'on':
-        return (words[0], words[2])
-    
-    return None
+
 
