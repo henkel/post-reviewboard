@@ -1212,7 +1212,7 @@ def new_diff(request, review_request_id, *args, **kwargs):
     if description:
         # post-commit review
         draft.description += '--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---\n'
-        draft.description += description
+        draft.description += unicode(description, errors='replace')
 
     # We only want to add default reviewers the first time.  Was bug 318.
     if review_request.diffset_history.diffsets.count() == 0:
