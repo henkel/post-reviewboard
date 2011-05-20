@@ -63,7 +63,7 @@ class SVNPostCommitTool(SVNTool):
 
         revisionInfo = {'revision': revision,
                         'user': logs[0].author or '',
-                        'description':logs[0].message or '',
+                        'description': logs[0].message or '',
                         'changes':changes,
                         'date':logs[0].date}
 
