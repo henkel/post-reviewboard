@@ -5,8 +5,8 @@ import pysvn
 import time
 import urllib
 
-
 from datetime import datetime, date, timedelta
+from operator import itemgetter
 
 from reviewboard.scmtools.svn_post import SVNPostCommitTool
 from reviewboard.scmtools.errors import SCMError
@@ -68,7 +68,10 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
         # Revision exclusion predicate
         isExcluded = lambda rev : rev in known_revisions or rev in to_be_ignored
         
-        return [ rev for rev in commits if not isExcluded(rev[0]) ]
+        sorted_revisions = sorted([ rev for rev in commits if not isExcluded(rev[0]) ], 
+                                  key=itemgetter(0), 
+                                  reverse=False) 
+        return sorted_revisions
 
 
     def ignore_revisions(self, userid, new_revisions_to_be_ignored):
