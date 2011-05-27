@@ -40,6 +40,7 @@ class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
         fields = PerforcePostCommitTool.get_fields(self)
         fields.append('revisions_choice')
         return fields
+
     
     def get_missing_revisions(self, userid):
         # Fetch user's commits from repository
@@ -51,19 +52,20 @@ class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
                                               self.freshness_delta, 
                                               extract_revision_user)
 
-        # Fetch revisions to be ignored
-        cache_key = 'perforce_post_tracker_ignore.'+ urllib.quote(str(self.repository.path)) +'.'+ userid
-        ignore_lists = [ revs for (_, revs) in  cache.get(cache_key) or [] ]
-        to_be_ignored = [item for sublist in ignore_lists for item in sublist]        
+        commits_to_be_ignored = self.revisionCache.get_ignored_revisions(userid)           
         
         # Revision exclusion predicate
-        isExcluded = lambda rev : rev in known_revisions or rev in to_be_ignored
+        isExcluded = lambda rev : rev in known_revisions or rev in commits_to_be_ignored
         
         sorted_revisions = sorted([ rev for rev in commits if not isExcluded(rev[0]) ], 
                                   key=itemgetter(0), 
                                   reverse=False) 
         return sorted_revisions
     
+    
+    def ignore_revisions(self, userid, new_revisions_to_be_ignored):
+        self.revisionCache.ignore_revisions(userid, new_revisions_to_be_ignored)
+        
     
     def _fetch_log_of_day_uncached(self, day):  
         self._connect()

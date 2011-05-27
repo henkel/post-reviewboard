@@ -83,6 +83,7 @@ class RepositoryRevisionCache:
         
         cache.set(cache_key, fresh_to_ignored, self.freshness_delta.days * 3600 * 24 + self.freshness_delta.seconds)
 
+
     def get_ignored_revisions(self, userid):
         # Fetch revisions to be ignored
         cache_key = self.cache_key_prefix + '.post_ig.' + '.' + userid
