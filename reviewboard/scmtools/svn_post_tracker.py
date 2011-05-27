@@ -5,7 +5,7 @@ import pysvn
 import time
 import urllib
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 from operator import itemgetter
 
 from reviewboard.scmtools.svn_post import SVNPostCommitTool
@@ -16,8 +16,6 @@ try:
     from pysvn import Revision, opt_revision_kind
 except ImportError:
     pass
-
-from django.core.cache import cache
 
 
 

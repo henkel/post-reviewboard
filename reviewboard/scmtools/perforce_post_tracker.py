@@ -3,16 +3,13 @@
 
 import urllib
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 from operator import itemgetter
-
-from reviewboard.reviews.models import ReviewRequest
 
 from reviewboard.scmtools.perforce_post import PerforcePostCommitTool
 from reviewboard.scmtools.errors import SCMError
 from reviewboard.scmtools.post_utils import get_known_revisions, RepositoryRevisionCache
 
-from django.core.cache import cache
 
 def extract_revision_user(line):
     # Try to extract revision info tuple (rev, user) from line
