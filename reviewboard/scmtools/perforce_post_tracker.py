@@ -23,6 +23,7 @@ def extract_revision_user(line):
     
     return None
 
+
 class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
     name = "Perforce Post Commit Tracker"
     
@@ -55,8 +56,6 @@ class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
         isExcluded = lambda rev : rev in known_revisions or rev in to_be_ignored
         
         return [ rev for rev in commits if not isExcluded(rev[0]) ]
-
-
     
     def get_filtered_changesets(self, userid):
         self._connect()

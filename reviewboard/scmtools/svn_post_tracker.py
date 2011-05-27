@@ -5,14 +5,12 @@ import pysvn
 import time
 import urllib
 
-import post_utils
 
 from datetime import datetime, date, timedelta
 
 from reviewboard.scmtools.svn_post import SVNPostCommitTool
 from reviewboard.scmtools.errors import SCMError
-from reviewboard.reviews.models import ReviewRequest
-from reviewboard.scmtools.post_utils import get_known_revisions
+from reviewboard.scmtools.post_utils import get_known_revisions, RepositoryRevisionCache
 
 try:
     from pysvn import Revision, opt_revision_kind
@@ -41,6 +39,9 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
     
     def __init__(self, repository):
         SVNPostCommitTool.__init__(self, repository)
+        self.revisionCache = RepositoryRevisionCache('svn_post_tracker.'+ urllib.quote(self.repopath), 
+                                                     self.freshness_delta, 
+                                                     self._fetch_log_of_day_uncached)
     
     
     def get_fields(self):
@@ -51,7 +52,7 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
     
     def get_missing_revisions(self, userid):
         # Fetch user's commits from repository
-        commits = self._get_latest_commits(userid, self.freshness_delta)
+        commits = self.revisionCache.get_latest_commits(userid)
         
         # Fetch the already contained
         known_revisions = get_known_revisions(userid, 
@@ -95,66 +96,26 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
         end = Revision(opt_revision_kind.date, end_time)
         log = []
         
-        for entry in self.client.log(self.repopath, revision_start=start, revision_end=end):
-            
-            if entry['date'] < start_time:
-                continue # workaround for pysvn bug which adds the previous day's last entry
-            
-            submit_date = datetime.fromtimestamp(entry['date'])      
-            date_str = submit_date.strftime("%Y-%m-%d")
-            
-            message = entry['message'] or '' 
-            msg = message.splitlines()[0].strip()
-            desc = 'on ' +date_str + ' : ' + msg
-            log.append(( str(entry['revision'].number), 
-                         entry['author'], 
-                         desc))
-        return log      
-        
-        
-    def _fetch_log_of_day(self, day, freshness_delta):
-        if day == date.today():
-            # Today - do not use cache
-            return self._fetch_log_of_day_uncached(day)
-        else:
-            # Load through cache
-            cache_key = 'svn_post_tracker_log.'+ urllib.quote(self.repopath) +'.'+ day.strftime("%Y-%m-%d")
-            entries = cache.get(cache_key)
-            if entries != None:
-                return entries
-            else:
-                entries = self._fetch_log_of_day_uncached(day)
-                cache.set(cache_key, entries, freshness_delta.days * 3600 * 24 + freshness_delta.seconds)
-            return entries
-  
-        
-    def _fetch_latest_log(self, freshness_delta):
-        cur = date.today()
-        first_day = date.today()-freshness_delta
-        log_entries = []
-        while cur > first_day:
-            latest_entries = log_entries
-            log_entries = self._fetch_log_of_day(cur, freshness_delta)
-            log_entries.extend(latest_entries)
-            cur -= timedelta(days=1)
-        return log_entries
-    
-    
-    def _get_latest_commits(self, userid, freshness_delta):
-        log_entries = self._fetch_latest_log(freshness_delta) 
-        user_revs = []
-                
-        lc_userid = userid.lower()
-                            
         try:
-            for log in log_entries: 
-                if log[1].lower() == lc_userid:
-                    user_revs.append((log[0], log[2]))
-               
+            for entry in self.client.log(self.repopath, revision_start=start, revision_end=end):
+                
+                if entry['date'] < start_time:
+                    continue # workaround for pysvn bug which adds the previous day's last entry
+                
+                submit_date = datetime.fromtimestamp(entry['date'])      
+                date_str = submit_date.strftime("%Y-%m-%d")
+                
+                message = entry['message'] or '' 
+                msg = message.splitlines()[0].strip()
+                desc = 'on ' +date_str + ' : ' + msg
+                log.append(( str(entry['revision'].number), 
+                             entry['author'], 
+                             desc))
+                       
         except pysvn.ClientError, e:
             raise SCMError('Error fetching revisions: ' +str(e))
         
-        return user_revs
-
-
+        return log      
+        
+        
 
