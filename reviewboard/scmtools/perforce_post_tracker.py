@@ -1,3 +1,6 @@
+# Perforce post-commit SCM tool with revision tracking functionality
+# Author: Philipp Henkel, weltraumpilot@googlemail.com
+
 import urllib
 
 from datetime import datetime, date, timedelta

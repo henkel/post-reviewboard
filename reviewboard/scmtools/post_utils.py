@@ -47,6 +47,7 @@ class DiffFile:
 
 
 class RepositoryRevisionCache:
+    
     def __init__(self, cache_key_prefix, freshness_delta, func_fetch_log_of_day):
         self.cache_key_prefix = cache_key_prefix
         self.freshness_delta = freshness_delta
@@ -65,6 +66,29 @@ class RepositoryRevisionCache:
 
         return user_revs
 
+
+    def ignore_revisions(self, userid, new_revisions_to_be_ignored):
+        cache_key = self.cache_key_prefix + '.post_ig.' + '.' + userid
+        
+        if new_revisions_to_be_ignored == None:
+            cache.delete(cache_key)  # do not ignore any revisions any longer
+            return
+        
+        if len(new_revisions_to_be_ignored) == 0:
+            return
+
+        all_to_be_ignored = cache.get(cache_key) or []
+        all_to_be_ignored.append((date.today(), new_revisions_to_be_ignored))
+        fresh_to_ignored = [ (creation, revs) for (creation, revs) in all_to_be_ignored if creation >= date.today()-self.freshness_delta ]
+        
+        cache.set(cache_key, fresh_to_ignored, self.freshness_delta.days * 3600 * 24 + self.freshness_delta.seconds)
+
+    def get_ignored_revisions(self, userid):
+        # Fetch revisions to be ignored
+        cache_key = self.cache_key_prefix + '.post_ig.' + '.' + userid
+        ignore_lists = [ revs for (_, revs) in  cache.get(cache_key) or [] ]
+        return [item for sublist in ignore_lists for item in sublist]
+        
 
     def _get_latest_revision_log(self):
         cur = date.today()

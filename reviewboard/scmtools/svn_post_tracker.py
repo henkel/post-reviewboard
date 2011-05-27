@@ -60,13 +60,10 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
                                               self.freshness_delta, 
                                               extract_revision_user)
         
-        # Fetch revisions to be ignored
-        cache_key = 'svn_post_tracker_ignore.'+ urllib.quote(self.repopath) +'.'+ userid
-        ignore_lists = [ revs for (_, revs) in  cache.get(cache_key) or [] ]
-        to_be_ignored = [item for sublist in ignore_lists for item in sublist]        
+        commits_to_be_ignored = self.revisionCache.get_ignored_revisions(userid)        
         
         # Revision exclusion predicate
-        isExcluded = lambda rev : rev in known_revisions or rev in to_be_ignored
+        isExcluded = lambda rev : rev in known_revisions or rev in commits_to_be_ignored
         
         sorted_revisions = sorted([ rev for rev in commits if not isExcluded(rev[0]) ], 
                                   key=itemgetter(0), 
@@ -75,20 +72,7 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
 
 
     def ignore_revisions(self, userid, new_revisions_to_be_ignored):
-        cache_key = 'svn_post_tracker_ignore.'+ urllib.quote(self.repopath) +'.'+ userid
-        
-        if new_revisions_to_be_ignored == None:
-            cache.delete(cache_key)  # do not ignore any revisions any longer
-            return
-        
-        if len(new_revisions_to_be_ignored) == 0:
-            return
-
-        all_to_be_ignored = cache.get(cache_key) or []
-        all_to_be_ignored.append((date.today(), new_revisions_to_be_ignored))
-        fresh_to_ignored = [ (creation, revs) for (creation, revs) in all_to_be_ignored if creation >= date.today()-self.freshness_delta ]
-        
-        cache.set(cache_key, fresh_to_ignored, self.freshness_delta.days * 3600 * 24 + self.freshness_delta.seconds)
+        self.revisionCache.ignore_revisions(userid, new_revisions_to_be_ignored)
         
 
     def _fetch_log_of_day_uncached(self, day):  

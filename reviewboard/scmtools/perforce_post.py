@@ -1,3 +1,6 @@
+# Perforce post-commit SCM tool
+# Author: Philipp Henkel, weltraumpilot@googlemail.com
+
 import re
 import subprocess
 import os
