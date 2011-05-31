@@ -1,11 +1,5 @@
-from datetime import date
-
 from reviewboard.reviews.models import ReviewRequest
-from reviewboard.scmtools.errors import SCMError
-
-from datetime import datetime, date, timedelta
-import time
-import urllib
+from datetime import date, timedelta
 from django.core.cache import cache
 
 
