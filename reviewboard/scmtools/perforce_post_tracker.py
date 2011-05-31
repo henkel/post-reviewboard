@@ -78,7 +78,7 @@ class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
                 
                 msg = changedesc['desc'].splitlines()[0].strip()
                 desc = 'on ' +date_str + ' : ' + msg
-                log.append(( int(changedesc['change']), 
+                log.append(( str(changedesc['change']), 
                              changedesc['user'], 
                              desc))
         except Exception, e:
