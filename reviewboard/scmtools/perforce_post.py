@@ -256,7 +256,7 @@ class PerforceDiffTool:
         submit_date = datetime.datetime.fromtimestamp(int(changedesc['time']))        
         time_str = submit_date.strftime("%Y-%m-%d %I:%M %p")
         
-        description = changedesc['change'] + ' by ' + changedesc['user'] + '@' + changedesc['client'] + ' on ' + time_str + '\n'
+        description = changedesc['change'] + ' by ' + changedesc['user'] + ' on ' + time_str + '\n'
 
         indent = ''.ljust(1 + len(changedesc['change']))
         desclines = changedesc['desc'].splitlines() 
