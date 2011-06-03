@@ -74,7 +74,7 @@ class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
 
             for changedesc in changes:
                 submit_date = datetime.fromtimestamp(int(changedesc['time']))        
-                date_str = submit_date.strftime("%Y/%m/%d")
+                date_str = submit_date.strftime("%Y-%m-%d")
                 
                 msg = changedesc['desc'].splitlines()[0].strip()
                 desc = 'on ' +date_str + ' : ' + msg
