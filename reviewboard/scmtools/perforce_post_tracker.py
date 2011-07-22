@@ -12,7 +12,7 @@ from reviewboard.scmtools.post_utils import get_known_revisions, RepositoryRevis
 
 
 def extract_revision_user(line):
-    # Try to extract revision info tuple (rev, user) from line
+    # Try to extract revision info tuple (rev, user, line, shelved) from line
     # Revision info example: "116855 by henkel on 2011-03-24 11:30 AM"
     words = line.split(' ',  5)
 
