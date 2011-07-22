@@ -72,12 +72,14 @@ class PerforceTool(SCMTool):
     def get_diffs_use_absolute_paths(self):
         return True
 
-    def get_file(self, path, revision=HEAD):
+    def get_file(self, path, revision=HEAD, from_changelist=False):
         if revision == PRE_CREATION:
             return ''
 
         if revision == HEAD:
             file = path
+        elif from_changelist:
+            file = '%s@=%s' % (path, revision)
         else:
             file = '%s#%s' % (path, revision)
 
