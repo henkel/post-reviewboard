@@ -75,7 +75,7 @@ class DiffStatus:
     def __init__(self, new_rev, p4_action, old_rev=None):
         new_rev = int(new_rev)
         if old_rev != None:
-			self.first_rew = int(old_rev)
+            self.first_rew = int(old_rev)
         elif new_rev > 0:
             self.first_rev = new_rev - 1
         else:
@@ -198,7 +198,7 @@ class PerforceDiffTool:
                 shelved = shelved or shelv
 
             if shelved and len(changelist_numbers) != 1:
-                raise SCMError('Shelved changelists can only be reviewed individually')
+                raise SCMError('Shelved changelists can only be reviewed one at a time')
                 
             # Create temporary dir and files
             temp_dir_name = mkdtemp(prefix='reviewboard_perforce_post.')
@@ -259,10 +259,10 @@ class PerforceDiffTool:
             if modified_files.has_key(path):
                 modified_files[path].update(changedesc['rev'][idx], changedesc['action'][idx])
             elif shelved:
-				#for pending changelists, the "new" revision is the Changelist number and the old revision is in 'rev'
-				modified_files[path] = DiffStatus(changedesc['shelved'], changedesc['action'][idx], changedesc['rev'][idx])
+                #for pending changelists, the "new" revision is the Changelist number and the old revision is in 'rev'
+                modified_files[path] = DiffStatus(changedesc['shelved'], changedesc['action'][idx], changedesc['rev'][idx])
             else:
-				#for normal changelists, the "new" revision is in "rev" and the old one is one less
+                #for normal changelists, the "new" revision is in "rev" and the old one is one less
                 modified_files[path] = DiffStatus(changedesc['rev'][idx], changedesc['action'][idx]) 
    
         submit_date = datetime.datetime.fromtimestamp(int(changedesc['time']))        
