@@ -72,10 +72,12 @@ class DiffStatus:
                                  'delete': DELETED,        # delete
                              }
     
-    def __init__(self, new_rev, p4_action):
+    def __init__(self, new_rev, p4_action, old_rev=None):
         new_rev = int(new_rev)
-        if new_rev > 0:
-            self.first_rev   = new_rev - 1
+        if old_rev != None:
+			self.first_rew = int(old_rev)
+        elif new_rev > 0:
+            self.first_rev = new_rev - 1
         else:
             self.first_rev = 0
         
@@ -189,8 +191,14 @@ class PerforceDiffTool:
 
             modified_files = { }
             description = ''
+            shelved = False
             for changelist_no in changelist_numbers:
-                description += self.merge_changelist_into_list_of_modified_files(changelist_no, modified_files)
+                desc, shelv = self.merge_changelist_into_list_of_modified_files(changelist_no, modified_files)
+                description += desc
+                shelved = shelved or shelv
+
+            if shelved and len(changelist_numbers) != 1:
+                raise SCMError('Shelved changelists can only be reviewed individually')
                 
             # Create temporary dir and files
             temp_dir_name = mkdtemp(prefix='reviewboard_perforce_post.')
@@ -213,14 +221,12 @@ class PerforceDiffTool:
         
                 diff_lines = []
         
-                for filename in modified_files:
-                    status = modified_files[filename]
-                
+                for filename, status in modified_files.iteritems():
                     if status.change_type == DiffStatus.DELETED:
                         # Skip all files
                         pass
                     else: 
-                        old_file, new_file = self._populate_temp_files(filename, status.first_rev,  status.last_rev, status.change_type,  False,  empty_filename,  tmp_diff_from_filename,  tmp_diff_to_filename)
+                        old_file, new_file = self._populate_temp_files(filename, status.first_rev,  status.last_rev, status.change_type,  shelved,  empty_filename,  tmp_diff_from_filename,  tmp_diff_to_filename)
                         diff_lines += self._diff_file(old_file, new_file, filename,  filename,  status.first_rev,  status.change_type,  cwd)
 
                 cleanup()
@@ -237,8 +243,10 @@ class PerforceDiffTool:
         
         changedesc = self.tool.get_changedesc(str(changelist_no))
         
-        if changedesc['status'] == 'pending':
-            raise SCMError('pending CLs are not supported')
+        shelved = 'shelved' in changedesc
+        
+        if changedesc['status'] == 'pending' and not shelved:
+            raise SCMError('pending CLs are only supported if shelved')
 
         try:
             changedesc['depotFile']
@@ -250,7 +258,11 @@ class PerforceDiffTool:
             
             if modified_files.has_key(path):
                 modified_files[path].update(changedesc['rev'][idx], changedesc['action'][idx])
+            elif shelved:
+				#for pending changelists, the "new" revision is the Changelist number and the old revision is in 'rev'
+				modified_files[path] = DiffStatus(changedesc['shelved'], changedesc['action'][idx], changedesc['rev'][idx])
             else:
+				#for normal changelists, the "new" revision is in "rev" and the old one is one less
                 modified_files[path] = DiffStatus(changedesc['rev'][idx], changedesc['action'][idx]) 
    
         submit_date = datetime.datetime.fromtimestamp(int(changedesc['time']))        
@@ -264,7 +276,7 @@ class PerforceDiffTool:
             description += indent + line.rstrip() + '\n'
         description += '\n'
                 
-        return description
+        return (description, shelved)
     
     
     def _populate_temp_files(self,  depot_path, rev_first,  rev_last,  changetype,  cl_is_pending,  empty_filename,  tmp_diff_from_filename,  tmp_diff_to_filename):
@@ -273,23 +285,23 @@ class PerforceDiffTool:
         if changetype == DiffStatus.MODIFIED:
             # We have an old file, get p4 to take this old version from the
             # depot and put it into a plain old temp file for us
-            self._write_file(depot_path, str(rev_first), tmp_diff_from_filename)
+            self._write_file(depot_path, str(rev_first), tmp_diff_from_filename, False)
             old_file = tmp_diff_from_filename
 
             # Also print out the new file into a tmpfile
-            self._write_file(depot_path, str(rev_last), tmp_diff_to_filename)
+            self._write_file(depot_path, str(rev_last), tmp_diff_to_filename, cl_is_pending)
             new_file = tmp_diff_to_filename
 
         elif changetype == DiffStatus.ADDED:
             # We have a new file, get p4 to put this new file into a pretty
             # temp file for us. No old file to worry about here.
-            self._write_file(depot_path, str(rev_last), tmp_diff_to_filename)
+            self._write_file(depot_path, str(rev_last), tmp_diff_to_filename, cl_is_pending)
             new_file = tmp_diff_to_filename
 
         elif changetype == DiffStatus.DELETED:
             # We've deleted a file, get p4 to put the deleted file into  a temp
             # file for us. The new file remains the empty file.
-            self._write_file(depot_path, str(rev_first), tmp_diff_from_filename)
+            self._write_file(depot_path, str(rev_first), tmp_diff_from_filename, False)
             old_file = tmp_diff_from_filename
             
             f = open(tmp_diff_to_filename, "w")
@@ -365,13 +377,13 @@ class PerforceDiffTool:
         return dl
 
 
-    def _write_file(self, path, revision, tmpfile):
+    def _write_file(self, path, revision, tmpfile, from_changelist):
         """
         Grabs a file from Perforce and writes it to a temp file. We do this
         wrather than telling p4 print to write it out in order to work around
         a permissions bug on Windows.
         """
-        data = self.tool.get_file(path, revision)
+        data = self.tool.get_file(path, revision, from_changelist)
         f = open(tmpfile, "w")
         f.write(data)
         f.close()
