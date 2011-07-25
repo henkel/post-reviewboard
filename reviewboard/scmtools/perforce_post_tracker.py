@@ -14,11 +14,8 @@ from reviewboard.scmtools.post_utils import get_known_revisions, RepositoryRevis
 def extract_revision_user(line):
     # Try to extract revision info tuple (rev, user, line, shelved) from line
     # Revision info example: "116855 by henkel on 2011-03-24 11:30 AM"
-    words = line.split(' ',  5)
+    words = line.split(' ',  4)
 
-    if len(words)>=5 and words[0] == 'Shelved:' and words[1].isdigit() and words[2] == 'by' and words[4] == 'on':
-        reuturn (words[1], words[3], line, True)
-        
     if len(words)>=4 and words[0].isdigit() and words[1] == 'by' and words[3] == 'on':
         return (words[0], words[2], line, False)
     
@@ -59,25 +56,34 @@ class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
         
         #first compare by shelved or not (pos 3 in tuple), then by changenumber (pos 0 in tuple)
         sorted_revisions = sorted([ rev for rev in commits if not isExcluded(rev[0]) ], 
-                                  cmp=lambda x,y: cmp(int(x[0]),int(y[0])) if cmp(x[3],y[3]) == 0 else cmp(x[3],y[3]), 
-                                  reverse=False) 
-        return sorted_revisions
+                                  key=itemgetter(0), 
+                                  reverse=False)
+        
+        #don't cache Shelved changelists
+        sorted_shelved = sorted([(rev[0], rev[2]) for rev in self._fetch_log_of_day_uncached(None, True, userid.lower())], key=itemgetter(0))
+        
+        # Starting with oldest entries first, return first the submitted revisions, then the shelved 
+        # changelists because these are considered brand new
+        return sorted_revisions + sorted_shelved
     
     
     def ignore_revisions(self, userid, new_revisions_to_be_ignored):
         self.revisionCache.ignore_revisions(userid, new_revisions_to_be_ignored)
         
     
-    def _fetch_log_of_day_uncached(self, day):  
+    def _fetch_log_of_day_uncached(self, day, shelved=False, userid=None):  
         self._connect()
         log = []
         
         try:
-            day_plus_one = day + timedelta(days=1)
-            #submitted changes
-            changes = self.p4.run_changes('-l', '-s', 'submitted', '@' + day.strftime("%Y/%m/%d") + ',' + day_plus_one.strftime("%Y/%m/%d"))
-            #extend by shelved changes. Note: those have a key 'shelved': ''
-            changes.extend(self.p4.run_changes('-l', '-s', 'shelved', '@' + day.strftime("%Y/%m/%d") + ',' + day_plus_one.strftime("%Y/%m/%d")))
+            if shelved:
+                #shelved changes. Note: those have a key 'shelved': ''
+                #ignore day
+                changes = self.p4.run_changes('-l', '-s', 'shelved', '-u', userid)
+            else:
+                #submitted changes
+                day_plus_one = day + timedelta(days=1)
+                changes = self.p4.run_changes('-l', '-s', 'submitted', '@' + day.strftime("%Y/%m/%d") + ',' + day_plus_one.strftime("%Y/%m/%d"))
 
             for changedesc in changes:
                 submit_date = datetime.fromtimestamp(int(changedesc['time']))        
@@ -85,7 +91,8 @@ class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
                 
                 msg = changedesc['desc'].splitlines()[0].strip()
                 shelved = 'shelved' in changedesc
-                desc = 'Shelved: ' if shelved else '' + 'on ' +date_str + ' : ' + msg
+                #' by ' + changedesc['user'] + 
+                desc = ('shelved ' if shelved else 'on ' + date_str)  + ' : ' + msg
                 log.append(( str(changedesc['change']), 
                              changedesc['user'], 
                              desc,

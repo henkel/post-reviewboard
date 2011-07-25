@@ -75,7 +75,7 @@ class DiffStatus:
     def __init__(self, new_rev, p4_action, old_rev=None):
         new_rev = int(new_rev)
         if old_rev != None:
-            self.first_rew = int(old_rev)
+            self.first_rev = int(old_rev)
         elif new_rev > 0:
             self.first_rev = new_rev - 1
         else:
@@ -260,7 +260,7 @@ class PerforceDiffTool:
                 modified_files[path].update(changedesc['rev'][idx], changedesc['action'][idx])
             elif shelved:
                 #for pending changelists, the "new" revision is the Changelist number and the old revision is in 'rev'
-                modified_files[path] = DiffStatus(changedesc['shelved'], changedesc['action'][idx], changedesc['rev'][idx])
+                modified_files[path] = DiffStatus(changedesc['change'], changedesc['action'][idx], changedesc['rev'][idx])
             else:
                 #for normal changelists, the "new" revision is in "rev" and the old one is one less
                 modified_files[path] = DiffStatus(changedesc['rev'][idx], changedesc['action'][idx]) 
