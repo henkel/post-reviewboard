@@ -45,6 +45,7 @@
         $("#id_repository")
             .change(updateFormDisplay)
             .triggerHandler("change");
+        //when clicking a checkbox, add revision number to #id_revisions
         $('.revisions_choice_list :input[type="checkbox"]')
             .bind('click', checkbox_clicked);
     });
