@@ -60,7 +60,7 @@ class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
                                   reverse=False)
         
         #don't cache Shelved changelists
-        sorted_shelved = sorted([(rev[0], rev[2]) for rev in self._fetch_log_of_day_uncached(None, True, userid.lower())], key=itemgetter(0))
+        sorted_shelved = sorted([(rev[0], rev[2]) for rev in self._fetch_shelved_logs(userid.lower())], key=itemgetter(0))
         
         # Starting with oldest entries first, return first the submitted revisions, then the shelved 
         # changelists because these are considered brand new
@@ -69,35 +69,43 @@ class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
     
     def ignore_revisions(self, userid, new_revisions_to_be_ignored):
         self.revisionCache.ignore_revisions(userid, new_revisions_to_be_ignored)
-        
-    
-    def _fetch_log_of_day_uncached(self, day, shelved=False, userid=None):  
-        self._connect()
+
+
+    def _get_log_changelists(self, changelists):
         log = []
         
-        try:
-            if shelved:
-                #shelved changes. Note: those have a key 'shelved': ''
-                #ignore day
-                changes = self.p4.run_changes('-l', '-s', 'shelved', '-u', userid)
-            else:
-                #submitted changes
-                day_plus_one = day + timedelta(days=1)
-                changes = self.p4.run_changes('-l', '-s', 'submitted', '@' + day.strftime("%Y/%m/%d") + ',' + day_plus_one.strftime("%Y/%m/%d"))
-
-            for changedesc in changes:
-                submit_date = datetime.fromtimestamp(int(changedesc['time']))        
-                date_str = submit_date.strftime("%Y-%m-%d")
-                
-                msg = changedesc['desc'].splitlines()[0].strip()
-                shelved = 'shelved' in changedesc
-                #' by ' + changedesc['user'] + 
-                desc = ('shelved ' if shelved else 'on ' + date_str)  + ' : ' + msg
-                log.append(( str(changedesc['change']), 
-                             changedesc['user'], 
-                             desc,
-                             shelved ))
-        except Exception, e:
-            raise SCMError('Error fetching revisions: ' +str(e))
+        for changedesc in changelists:
+            submit_date = datetime.fromtimestamp(int(changedesc['time']))        
+            date_str = submit_date.strftime("%Y-%m-%d")
+            
+            msg = (changedesc['desc'].splitlines()or [''])[0].strip()
+            shelved = 'shelved' in changedesc
+            #' by ' + changedesc['user'] + 
+            desc = ('shelved ' if shelved else 'on ' + date_str)  + ' : ' + msg
+            log.append(( str(changedesc['change']), 
+                         changedesc['user'], 
+                         desc,
+                         shelved ))
         
         return log
+
+
+    def _fetch_shelved_logs(self, userid):
+        self._connect()
+        try:
+            # Shelved changes. Note: those have a key 'shelved': ''
+            changes = self.p4.run_changes('-l', '-s', 'shelved', '-u', userid)
+            return self._get_log_changelists(changes)
+        except Exception, e:
+            raise SCMError('Error fetching revisions: ' +str(e))
+
+
+    def _fetch_log_of_day_uncached(self, day):  
+        self._connect()
+        try:
+            # Fetch submitted changes
+            day_plus_one = day + timedelta(days=1)
+            changes = self.p4.run_changes('-l', '-s', 'submitted', '@' + day.strftime("%Y/%m/%d") + ',' + day_plus_one.strftime("%Y/%m/%d"))
+            return self._get_log_changelists(changes)
+        except Exception, e:
+            raise SCMError('Error fetching revisions: ' +str(e))

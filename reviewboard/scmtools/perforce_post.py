@@ -182,26 +182,25 @@ class PerforceDiffTool:
             
             changelist_numbers.sort()
 
-            if len(changelist_numbers) != 1:
+            changelists = [self.tool.get_changedesc(changelist_number) for changelist_number in changelist_numbers]
+            
+            # Only allow one shelved changelist
+            is_shelved = reduce(lambda shelved,cl: shelved or cl['status'] == 'pending', changelists, False)
+            if is_shelved and len(changelists) > 1:
+                raise SCMError('Shelved changelists can only be reviewed one at a time')  
+            
+            # Summary
+            if len(changelists) != 1:
                 summary = ''  # user should give a summary
             else:
-                # Use commit message as summary
-                changedesc = self.tool.get_changedesc(changelist_numbers[0])
-                desc = changedesc['desc'].splitlines(True)
-                if len(desc) > 0:
-                    summary = desc[0].strip()
+                # Use first line of commit message as summary (if it exists)
+                summary = (changelists[0]['desc'].splitlines() or [''])[0].strip()
 
             modified_files = { }
             description = ''
-            shelved = False
-            for changelist_no in changelist_numbers:
-                desc, shelv = self.merge_changelist_into_list_of_modified_files(changelist_no, modified_files)
-                description += desc
-                shelved = shelved or shelv
+            for changelist in changelists:
+                description += self.merge_changelist_into_list_of_modified_files(changelist, modified_files)
 
-            if shelved and len(changelist_numbers) != 1:
-                raise SCMError('Shelved changelists can only be reviewed one at a time')
-                
             # Create temporary dir and files
             temp_dir_name = mkdtemp(prefix='reviewboard_perforce_post.')
             fd, empty_filename = mkstemp(dir=temp_dir_name)
@@ -228,8 +227,8 @@ class PerforceDiffTool:
                         # Skip all files
                         pass
                     else: 
-                        old_file, new_file = self._populate_temp_files(filename, status.first_rev,  status.last_rev, status.change_type,  shelved,  empty_filename,  tmp_diff_from_filename,  tmp_diff_to_filename)
-                        diff_lines += self._diff_file(old_file, new_file, filename,  filename,  status.first_rev,  status.change_type,  cwd)
+                        old_file, new_file = self._populate_temp_files(filename, status.first_rev, status.last_rev, status.change_type, is_shelved, empty_filename, tmp_diff_from_filename, tmp_diff_to_filename)
+                        diff_lines += self._diff_file(old_file, new_file, filename, filename, status.first_rev, status.change_type, cwd)
 
                 cleanup()
                 return DiffFile(summary, description, ''.join(diff_lines))
@@ -241,10 +240,7 @@ class PerforceDiffTool:
             raise SCMError('Error creating diff: ' + str(e) )
 
 
-    def merge_changelist_into_list_of_modified_files(self, changelist_no, modified_files):
-        
-        changedesc = self.tool.get_changedesc(str(changelist_no))
-        
+    def merge_changelist_into_list_of_modified_files(self, changedesc, modified_files):
         shelved = 'shelved' in changedesc
         
         if changedesc['status'] == 'pending' and not shelved:
@@ -253,7 +249,7 @@ class PerforceDiffTool:
         try:
             changedesc['depotFile']
         except KeyError:
-            return ('', shelved) # skip CL
+            return '' # skip CL
 
         for idx in range(0, len(changedesc['depotFile'])):
             path = changedesc['depotFile'][idx]
@@ -278,7 +274,7 @@ class PerforceDiffTool:
             description += indent + line.rstrip() + '\n'
         description += '\n'
                 
-        return (description, shelved)
+        return description
     
     
     def _populate_temp_files(self,  depot_path, rev_first,  rev_last,  changetype,  cl_is_pending,  empty_filename,  tmp_diff_from_filename,  tmp_diff_to_filename):
