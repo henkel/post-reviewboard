@@ -42,7 +42,7 @@ class PerforcePostCommitTool(PerforceTool):
             return res
 
         try:
-            changedesc = self.p4.run_describe('-s', change_number)
+            changedesc = self.p4.run_describe('-S', change_number)
         except Exception, e:
             raise SCMError('Perforce error: ' + str(e))
         
@@ -51,7 +51,9 @@ class PerforcePostCommitTool(PerforceTool):
 
         changedesc = changedesc[0]
         
-        cache.set(cache_key, changedesc, 60*60*24*7)
+        if changedesc['status'] != 'pending':
+            cache.set(cache_key, changedesc, 60*60*24*7)
+
         return changedesc
 
         
@@ -74,7 +76,7 @@ class DiffStatus:
     
     def __init__(self, new_rev, p4_action, old_rev=None):
         new_rev = int(new_rev)
-        if old_rev != None:
+        if old_rev != None and old_rev != 'none':  # new shelved files have revision 'none' in Perforce
             self.first_rev = int(old_rev)
         elif new_rev > 0:
             self.first_rev = new_rev - 1
@@ -251,7 +253,7 @@ class PerforceDiffTool:
         try:
             changedesc['depotFile']
         except KeyError:
-            return '' # skip CL
+            return ('', shelved) # skip CL
 
         for idx in range(0, len(changedesc['depotFile'])):
             path = changedesc['depotFile'][idx]
