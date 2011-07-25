@@ -268,12 +268,10 @@ class PerforceDiffTool:
         
         description = changedesc['change'] + ' by ' + changedesc['user'] + ' on ' + time_str + '\n'
 
+        # Indent commit message
         indent = ''.ljust(1 + len(changedesc['change']))
-        desclines = changedesc['desc'].splitlines() 
-        for line in desclines:
-            description += indent + line.rstrip() + '\n'
-        description += '\n'
-                
+        description += "".join((indent + line.rstrip() + "\n" for line in changedesc['desc'].splitlines())) + "\n"        
+
         return description
     
     
