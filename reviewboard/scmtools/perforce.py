@@ -2,7 +2,7 @@ import re
 import subprocess
 
 try:
-    from P4 import P4Error
+    from P4 import P4Error, P4Exception
 except ImportError:
     pass
 
@@ -44,8 +44,11 @@ class PerforceTool(SCMTool):
             pass
 
     def _connect(self):
-        if not self.p4.connected():
-            self.p4.connect()
+        try:
+            if not self.p4.connected():
+                self.p4.connect()
+        except P4Exception, e:
+            raise SCMError('Error connecting to Perforce server: ' + str(e))
 
     def _disconnect(self):
         try:
