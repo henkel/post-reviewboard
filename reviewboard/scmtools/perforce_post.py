@@ -42,7 +42,7 @@ class PerforcePostCommitTool(PerforceTool):
             return res
 
         try:
-            changedesc = self.p4.run_describe('-s', change_number)
+            changedesc = self.p4.run_describe('-S', change_number)
         except Exception, e:
             raise SCMError('Perforce error: ' + str(e))
         
@@ -51,7 +51,9 @@ class PerforcePostCommitTool(PerforceTool):
 
         changedesc = changedesc[0]
         
-        cache.set(cache_key, changedesc, 60*60*24*7)
+        if changedesc['status'] != 'pending':
+            cache.set(cache_key, changedesc, 60*60*24*7)
+
         return changedesc
 
         
@@ -74,8 +76,8 @@ class DiffStatus:
     
     def __init__(self, new_rev, p4_action, old_rev=None):
         new_rev = int(new_rev)
-        if old_rev != None:
-            self.first_rew = int(old_rev)
+        if old_rev != None and old_rev != 'none':  # new shelved files have revision 'none' in Perforce
+            self.first_rev = int(old_rev)
         elif new_rev > 0:
             self.first_rev = new_rev - 1
         else:
@@ -180,26 +182,25 @@ class PerforceDiffTool:
             
             changelist_numbers.sort()
 
-            if len(changelist_numbers) != 1:
+            changelists = [self.tool.get_changedesc(changelist_number) for changelist_number in changelist_numbers]
+            
+            # Only allow one shelved changelist
+            is_shelved = reduce(lambda shelved,cl: shelved or cl['status'] == 'pending', changelists, False)
+            if is_shelved and len(changelists) > 1:
+                raise SCMError('Shelved changelists can only be reviewed one at a time')  
+            
+            # Summary
+            if len(changelists) != 1:
                 summary = ''  # user should give a summary
             else:
-                # Use commit message as summary
-                changedesc = self.tool.get_changedesc(changelist_numbers[0])
-                desc = changedesc['desc'].splitlines(True)
-                if len(desc) > 0:
-                    summary = desc[0].strip()
+                # Use first line of commit message as summary (if it exists)
+                summary = (changelists[0]['desc'].splitlines() or [''])[0].strip()
 
             modified_files = { }
             description = ''
-            shelved = False
-            for changelist_no in changelist_numbers:
-                desc, shelv = self.merge_changelist_into_list_of_modified_files(changelist_no, modified_files)
-                description += desc
-                shelved = shelved or shelv
+            for changelist in changelists:
+                description += self.merge_changelist_into_list_of_modified_files(changelist, modified_files)
 
-            if shelved and len(changelist_numbers) != 1:
-                raise SCMError('Shelved changelists can only be reviewed one at a time')
-                
             # Create temporary dir and files
             temp_dir_name = mkdtemp(prefix='reviewboard_perforce_post.')
             fd, empty_filename = mkstemp(dir=temp_dir_name)
@@ -226,8 +227,8 @@ class PerforceDiffTool:
                         # Skip all files
                         pass
                     else: 
-                        old_file, new_file = self._populate_temp_files(filename, status.first_rev,  status.last_rev, status.change_type,  shelved,  empty_filename,  tmp_diff_from_filename,  tmp_diff_to_filename)
-                        diff_lines += self._diff_file(old_file, new_file, filename,  filename,  status.first_rev,  status.change_type,  cwd)
+                        old_file, new_file = self._populate_temp_files(filename, status.first_rev, status.last_rev, status.change_type, is_shelved, empty_filename, tmp_diff_from_filename, tmp_diff_to_filename)
+                        diff_lines += self._diff_file(old_file, new_file, filename, filename, status.first_rev, status.change_type, cwd)
 
                 cleanup()
                 return DiffFile(summary, description, ''.join(diff_lines))
@@ -239,10 +240,7 @@ class PerforceDiffTool:
             raise SCMError('Error creating diff: ' + str(e) )
 
 
-    def merge_changelist_into_list_of_modified_files(self, changelist_no, modified_files):
-        
-        changedesc = self.tool.get_changedesc(str(changelist_no))
-        
+    def merge_changelist_into_list_of_modified_files(self, changedesc, modified_files):
         shelved = 'shelved' in changedesc
         
         if changedesc['status'] == 'pending' and not shelved:
@@ -260,7 +258,7 @@ class PerforceDiffTool:
                 modified_files[path].update(changedesc['rev'][idx], changedesc['action'][idx])
             elif shelved:
                 #for pending changelists, the "new" revision is the Changelist number and the old revision is in 'rev'
-                modified_files[path] = DiffStatus(changedesc['shelved'], changedesc['action'][idx], changedesc['rev'][idx])
+                modified_files[path] = DiffStatus(changedesc['change'], changedesc['action'][idx], changedesc['rev'][idx])
             else:
                 #for normal changelists, the "new" revision is in "rev" and the old one is one less
                 modified_files[path] = DiffStatus(changedesc['rev'][idx], changedesc['action'][idx]) 
@@ -270,13 +268,11 @@ class PerforceDiffTool:
         
         description = changedesc['change'] + ' by ' + changedesc['user'] + ' on ' + time_str + '\n'
 
+        # Indent commit message
         indent = ''.ljust(1 + len(changedesc['change']))
-        desclines = changedesc['desc'].splitlines() 
-        for line in desclines:
-            description += indent + line.rstrip() + '\n'
-        description += '\n'
-                
-        return (description, shelved)
+        description += "".join((indent + line.rstrip() + "\n" for line in changedesc['desc'].splitlines())) + "\n"        
+
+        return description
     
     
     def _populate_temp_files(self,  depot_path, rev_first,  rev_last,  changetype,  cl_is_pending,  empty_filename,  tmp_diff_from_filename,  tmp_diff_to_filename):
