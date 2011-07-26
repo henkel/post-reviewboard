@@ -1,6 +1,11 @@
+from itertools import chain
 from django import forms
+from django.forms import widgets
 from django.contrib.admin.widgets import FilteredSelectMultiple
+from django.utils.encoding import force_unicode
 from django.utils.translation import ugettext as _
+from django.utils.html import conditional_escape
+from django.utils.safestring import mark_safe
 from reviewboard.diffviewer import forms as diffviewer_forms
 from reviewboard.diffviewer.models import DiffSet
 from reviewboard.reviews.errors import OwnershipError, RevisionTableUpdated
@@ -291,32 +296,33 @@ class UploadScreenshotForm(forms.Form):
         return screenshot
 
 
-class MultiChoiceWithMeaningfulIdsButNoValidation(forms.MultipleChoiceField):
+class MultiChoiceWithoutValidation(forms.MultipleChoiceField):
     def validate(self, value):
         # Choices are created dynamically and cannot be validated
         pass
-        
+
+class CheckboxSelectMultipleWithIds(widgets.CheckboxSelectMultiple):    
     # Sorry for copy&pasting this from django/trunk/django/forms/widgets.py, 
     # but I really needed to change the html element id of the checkboxes
     # and did not find a better way...
     # The render function below is licenced under the following terms:
     #Copyright (c) Django Software Foundation and individual contributors.
     #All rights reserved.
-
+    #
     #Redistribution and use in source and binary forms, with or without modification,
     #are permitted provided that the following conditions are met:
-
-        #1. Redistributions of source code must retain the above copyright notice, 
-           #this list of conditions and the following disclaimer.
-        
-        #2. Redistributions in binary form must reproduce the above copyright 
-           #notice, this list of conditions and the following disclaimer in the
-           #documentation and/or other materials provided with the distribution.
-
-        #3. Neither the name of Django nor the names of its contributors may be used
-           #to endorse or promote products derived from this software without
-           #specific prior written permission.
-
+    #
+    #    1. Redistributions of source code must retain the above copyright notice, 
+    #       this list of conditions and the following disclaimer.
+    #
+    #    2. Redistributions in binary form must reproduce the above copyright 
+    #       notice, this list of conditions and the following disclaimer in the
+    #       documentation and/or other materials provided with the distribution.
+    #
+    #    3. Neither the name of Django nor the names of its contributors may be used
+    #       to endorse or promote products derived from this software without
+    #       specific prior written permission.
+    #
     #THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
     #ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
     #WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -334,7 +340,7 @@ class MultiChoiceWithMeaningfulIdsButNoValidation(forms.MultipleChoiceField):
         output = [u'<ul>']
         # Normalize to strings
         str_values = set([force_unicode(v) for v in value])
-        for i, (option_value, option_label) in enumerate(chain(self.choices, choices)):
+        for option_value, option_label in chain(self.choices, choices):
             # If an ID attribute was given, add a numeric index as a suffix,
             # so that the checkboxes don't all have the same ID attribute.
             if has_id:
@@ -343,7 +349,7 @@ class MultiChoiceWithMeaningfulIdsButNoValidation(forms.MultipleChoiceField):
             else:
                 label_for = ''
 
-            cb = CheckboxInput(final_attrs, check_test=lambda value: value in str_values)
+            cb = widgets.CheckboxInput(final_attrs, check_test=lambda value: value in str_values)
             option_value = force_unicode(option_value)
             rendered_cb = cb.render(name, option_value)
             option_label = conditional_escape(force_unicode(option_label))
@@ -375,7 +381,7 @@ class NewPostReviewRequestForm(forms.Form):
                                  widget=forms.TextInput(attrs={'size':'50'}),
                                  help_text=_('A list of revision identifiers, e.g. 11235 57789 34567'))
 
-    revisions_choice = MultiChoiceWithMeaningfulIdsButNoValidation(required=False, widget=forms.CheckboxSelectMultiple)
+    revisions_choice = MultiChoiceWithoutValidation(required=False, widget=CheckboxSelectMultipleWithIds)
 
     LOAD_REVISIONS_BUTTON__SHOW = _('Get Revisions')
     LOAD_REVISIONS_BUTTON__UPDATE = _('Refresh Revisions')
@@ -487,8 +493,10 @@ class NewPostReviewRequestForm(forms.Form):
 
         if 'revisions_choice' in self.cleaned_data:
             for rev in self.cleaned_data['revisions_choice']:
-                revision_list.append(rev)
-                self.data['revisions'] += ' ' + str(rev)
+                if rev not in revision_list:
+                    revision_list.append(rev)
+                
+        self.data['revisions'] = ' '.join(sorted(revision_list))
 
         if len(revision_list) > 0:
             # Eliminate duplicates
