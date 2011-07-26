@@ -37,14 +37,52 @@
 			if (checked && revisions.indexOf(rev) == -1) {
 				revisions.push(rev);
 			}
-			elrevision.val(revisions.sort().join(' ').trim());
+			elrevision.val(revisions.join(' ').trim());
 		}
-	};    
+	};
+
+	function get_revisions_changed_cb() {
+		var last_revisions = {};
+		function s2o(s) {
+			var i, 
+				a = s.split(' '), 
+				n = a.length, 
+				ret = {};
+			for(i = 0; i < n; ++i) {
+				ret[a[i]] = true;
+			}
+			return ret;
+		}
+		return function() {
+			var item,
+				new_revisions = s2o($('#id_revisions').val());
+			for(item in new_revisions) {
+				if (!(item in last_revisions)) {
+					//new item -> check
+					$('#id_revisions_choice_'+item).attr('checked', true);
+				}
+			}
+			for(item in last_revisions) {
+				if (!(item in new_revisions)) {
+					//removed item -> uncheck
+					$('#id_revisions_choice_'+item).attr('checked', false);
+				}
+			}
+			last_revisions = new_revisions;
+		};
+	};
 
     $(document).ready(function() {
         $("#id_repository")
             .change(updateFormDisplay)
             .triggerHandler("change");
+        //check checkboxes that were selected on previous page
+        var i, 
+        	revs = $('#id_revisions').val().split(' ');
+        for(i = 0; i < revs.length; ++i) { 
+          $('#id_revisions_choice_'+revs[i]).attr('checked', true);
+        } 
+        $('#id_revisions').bind('keyup', get_revisions_changed_cb());
         //when clicking a checkbox, add revision number to #id_revisions
         $('.revisions_choice_list :input[type="checkbox"]')
             .bind('click', checkbox_clicked);
