@@ -21,12 +21,35 @@
             $("tr.row_" + this).show();
         });
     }
+    
+	function checkbox_clicked(box) { 
+		if (box && box.currentTarget && [].indexOf) {
+			var rev = box.currentTarget.value, 
+				checked = box.currentTarget.checked,
+				elrevision = $('#id_revisions'),
+				revisions = elrevision.val().split(' '),
+				idx;
+			//checkbox is unchecked: remove all occurences of rev from list of revisions
+			while (!checked && (idx = revisions.indexOf(rev)) != -1) {
+				revisions = revisions.slice(0, idx).concat(revisions.slice(idx+1));
+			}
+			//checkbox is checked: add occurence if not already present
+			if (checked && revisions.indexOf(rev) == -1) {
+				revisions.push(rev);
+			}
+			elrevision.val(revisions.sort().join(' ').trim());
+		}
+	};    
 
     $(document).ready(function() {
         $("#id_repository")
             .change(updateFormDisplay)
             .triggerHandler("change");
+        //when clicking a checkbox, add revision number to #id_revisions
+        $('.revisions_choice_list :input[type="checkbox"]')
+            .bind('click', checkbox_clicked);
     });
+    
 </script>
 {% endblock %}
 
