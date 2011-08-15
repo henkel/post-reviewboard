@@ -16,6 +16,7 @@ from reviewboard.scmtools.perforce import PerforceTool
 from reviewboard.scmtools.errors import SCMError
 
 from django.core.cache import cache
+from django.utils import encoding
 
 class PerforcePostCommitTool(PerforceTool):
     name = "Perforce Post Commit" 
@@ -50,6 +51,8 @@ class PerforcePostCommitTool(PerforceTool):
             raise SCMError('Change '+str(change_number)+ ' not found')
 
         changedesc = changedesc[0]
+        
+        changedesc['desc'] = encoding.smart_str(changedesc['desc'], encoding='ascii', errors='ignore')
         
         if changedesc['status'] != 'pending':
             cache.set(cache_key, changedesc, 60*60*24*7)

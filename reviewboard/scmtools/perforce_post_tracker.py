@@ -11,6 +11,7 @@ from reviewboard.scmtools.errors import SCMError
 from reviewboard.scmtools.post_utils import get_known_revisions, RepositoryRevisionCache
 
 from django.core.cache import cache
+from django.utils import encoding
 
 def extract_revision_user(line):
     # Try to extract revision info tuple (rev, user, line, shelved) from line
@@ -95,6 +96,8 @@ class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
             date_str = submit_date.strftime("%Y-%m-%d")
             
             msg = (changedesc['desc'].splitlines()or [''])[0].strip()
+            msg = encoding.smart_str(msg, encoding='ascii', errors='ignore')
+            
             shelved = 'shelved' in changedesc
             #' by ' + changedesc['user'] + 
             desc = ('shelved ' if shelved else 'on ' + date_str)  + ' : ' + msg
