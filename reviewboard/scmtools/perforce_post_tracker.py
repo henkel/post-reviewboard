@@ -33,8 +33,10 @@ class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
                                                      self.freshness_delta, 
                                                      self._fetch_log_of_day_uncached)
 
+
     def get_fields(self):
         fields = PerforcePostCommitTool.get_fields(self)
+        fields.append('scm_user')
         fields.append('revisions_choice')
         return fields
 

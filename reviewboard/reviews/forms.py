@@ -373,6 +373,12 @@ class NewPostReviewRequestForm(forms.Form):
         empty_label=NO_REPOSITORY_ENTRY,
         required=False)
 
+    scm_user = forms.CharField(
+        label=_("User Name"),
+        max_length=256,
+        widget=forms.TextInput(attrs={'size': '20'}),
+        help_text=_('User name which is used with the selected repository'))
+
     # match ' 23 42 3343 ' or ' 23, 34 , 235235 '
     revisions = forms.RegexField(regex=r'^(\s*[A-F,a-f,0-9]+\s*,{0,1}\s*)+$',
                                  label=_('List of Revisions'),
@@ -381,7 +387,9 @@ class NewPostReviewRequestForm(forms.Form):
                                  widget=forms.TextInput(attrs={'size':'50'}),
                                  help_text=_('A list of revision identifiers, e.g. 11235 57789 34567'))
 
-    revisions_choice = MultiChoiceWithoutValidation(required=False, widget=CheckboxSelectMultipleWithIds)
+    revisions_choice = MultiChoiceWithoutValidation(required=False,
+                                                    label=_('Pending Revisions'), 
+                                                    widget=CheckboxSelectMultipleWithIds)
 
     LOAD_REVISIONS_BUTTON__SHOW = _('Get Revisions')
     LOAD_REVISIONS_BUTTON__UPDATE = _('Refresh Revisions')

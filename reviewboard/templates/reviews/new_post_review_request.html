@@ -121,6 +121,18 @@
      {% endblocktrans %}
     </td>
    </tr>
+   
+   </tr>
+   <tr class="row_scm_user">
+    <td><label for="id_scm_user">{{form.scm_user.label}}:</label></td>
+    <td>{{form.scm_user}}</td>
+    <td>{{form.scm_user.errors}}</td>
+   </tr>   
+   <tr class="row_scm_user">
+    <td></td>
+    <td class="help" colspan="2">{{form.scm_user.help_text}}</td>
+   </tr>
+
    <tr class="row_revisions">
     <td><label for="id_revisions">{{form.revisions.label}}:</label></td>
     <td>{{form.revisions}}</td>
@@ -132,7 +144,7 @@
    </tr>
 
    <tr class="row_revisions_choice" border="1">
-    <td border="1"><label for="id_revisions">My Pending Revisions:</label></td>
+    <td border="1"><label for="id_revisions">{{form.revisions_choice.label}}:</label></td>
     <td border="1"><input class="revisions_choice_button" type="submit" name="load_revisions_button" value="{{form.load_revisions_button}}"/> </td> 
     <td border="1"><input class="revisions_choice_button" type="submit" name="ignore_revisions_button" value="{{form.ignore_revisions_button}}"/>
 		   <input class="revisions_choice_button" type="submit" name="showall_revisions_button" value="{{form.showall_revisions_button}}"/>
