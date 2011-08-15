@@ -48,7 +48,7 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
         return fields
     
     
-    def get_missing_revisions(self, userid):
+    def get_missing_revisions(self, userid, scm_user):
         # Fetch user's commits from repository
         commits = self.revisionCache.get_latest_commits(userid)
         

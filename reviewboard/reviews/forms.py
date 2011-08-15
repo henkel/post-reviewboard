@@ -374,10 +374,11 @@ class NewPostReviewRequestForm(forms.Form):
         required=False)
 
     scm_user = forms.CharField(
+        required=False,
         label=_("User Name"),
         max_length=256,
         widget=forms.TextInput(attrs={'size': '20'}),
-        help_text=_('User name which is used with the selected repository'))
+        help_text=_('User which is used to fetch pending revisions. If left empty the last one will be used again.'))
 
     # match ' 23 42 3343 ' or ' 23, 34 , 235235 '
     revisions = forms.RegexField(regex=r'^(\s*[A-F,a-f,0-9]+\s*,{0,1}\s*)+$',
@@ -442,6 +443,7 @@ class NewPostReviewRequestForm(forms.Form):
     def create(self, user, diff_file):
         tool = None
         revisions_error_field = ''
+        scm_user = user.username
 
         repository = self.cleaned_data['repository']
 
@@ -452,6 +454,13 @@ class NewPostReviewRequestForm(forms.Form):
                 revisions_error_field = 'revisions'
             if 'revisions_choice' in tool_fields:
                 revisions_error_field = 'revisions_choice'
+            if 'scm_user' in tool_fields:
+                if self.cleaned_data['scm_user'] == '':
+                    self.data['scm_user'] = tool.get_scm_user(user.username)
+                    scm_user = tool.get_scm_user(user.username)
+                else:
+                    scm_user = self.cleaned_data['scm_user']                     
+                    tool.set_scm_user(user.username, scm_user)
 
         any_revisions_choice_button_clicked = 'load_revisions_button' in self.data or 'ignore_revisions_button' in self.data or 'showall_revisions_button' in self.data
 
@@ -474,7 +483,7 @@ class NewPostReviewRequestForm(forms.Form):
 
         if any_revisions_choice_button_clicked:
             try:
-                missing_revisions = tool.get_missing_revisions(user.username)
+                missing_revisions = tool.get_missing_revisions(user.username, scm_user)
             except Exception, e:
                 self.errors[revisions_error_field] = forms.util.ErrorList([str(e)])
                 raise e
@@ -482,7 +491,7 @@ class NewPostReviewRequestForm(forms.Form):
             if len(missing_revisions) == 0:
                 self.fields['revisions_choice'].choices = []
                 self.cleaned_data['revisions_choice'] = []
-                self.errors[revisions_error_field] = forms.util.ErrorList("No pending revisions found.")
+                self.errors[revisions_error_field] = forms.util.ErrorList("No pending revisions found for user " + scm_user)
             else:
                 missing_revisions.reverse()
                 self.fields['revisions_choice'].choices = [ (rev[0], rev[0]+' '+rev[1]) for rev in missing_revisions ]

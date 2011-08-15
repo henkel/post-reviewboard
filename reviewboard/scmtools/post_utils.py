@@ -47,6 +47,15 @@ class RepositoryRevisionCache:
         self.freshness_delta = freshness_delta
         self.func_fetch_log_of_day = func_fetch_log_of_day
 
+    def get_scm_user(self, userid):
+        cache_key = self.cache_key_prefix + '.post_scm_user.' + '.' + userid
+        return cache.get(cache_key) or userid
+        
+
+    def set_scm_user(self, userid, scm_user):
+        cache_key = self.cache_key_prefix + '.post_scm_user.' + '.' + userid
+        cache.set(cache_key, scm_user, 30 * 3600 * 24) # expires after 1 month
+
 
     def get_latest_commits(self, userid):
         log_entries = self._get_latest_revision_log()
@@ -81,7 +90,7 @@ class RepositoryRevisionCache:
     def get_ignored_revisions(self, userid):
         # Fetch revisions to be ignored
         cache_key = self.cache_key_prefix + '.post_ig.' + '.' + userid
-        ignore_lists = [ revs for (_, revs) in  cache.get(cache_key) or [] ]
+        ignore_lists = [ revs for (_, revs) in cache.get(cache_key) or [] ]
         return [item for sublist in ignore_lists for item in sublist]
 
 

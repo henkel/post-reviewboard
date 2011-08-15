@@ -10,6 +10,7 @@ from reviewboard.scmtools.perforce_post import PerforcePostCommitTool
 from reviewboard.scmtools.errors import SCMError
 from reviewboard.scmtools.post_utils import get_known_revisions, RepositoryRevisionCache
 
+from django.core.cache import cache
 
 def extract_revision_user(line):
     # Try to extract revision info tuple (rev, user, line, shelved) from line
@@ -40,29 +41,42 @@ class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
         fields.append('revisions_choice')
         return fields
 
+
+    def get_scm_user(self, userid):
+        return self.revisionCache.get_scm_user(userid)     
+
+
+    def set_scm_user(self, userid, scm_user):
+        self.revisionCache.set_scm_user(userid, scm_user)     
+ 
     
-    def get_missing_revisions(self, userid):
+    def get_missing_revisions(self, userid, scm_user):
+        scm_user = scm_user or userid
+        scm_user = scm_user.lower()
+        
         # Fetch user's commits from repository
-        commits = self.revisionCache.get_latest_commits(userid)
+        commits = self.revisionCache.get_latest_commits(scm_user)
         
         # Fetch the already contained
-        known_revisions = get_known_revisions(userid, 
+        known_revisions = get_known_revisions(scm_user, 
                                               self.repository, 
                                               self.freshness_delta, 
                                               extract_revision_user)
 
-        commits_to_be_ignored = self.revisionCache.get_ignored_revisions(userid)           
+        changelists_to_be_ignored = self.revisionCache.get_ignored_revisions(userid)           
         
         # Revision exclusion predicate
-        isExcluded = lambda rev : rev in known_revisions or rev in commits_to_be_ignored
+        isExcluded = lambda rev : rev in known_revisions or rev in changelists_to_be_ignored
         
         #first compare by shelved or not (pos 3 in tuple), then by changenumber (pos 0 in tuple)
         sorted_revisions = sorted([ rev for rev in commits if not isExcluded(rev[0]) ], 
                                   key=itemgetter(0), 
                                   reverse=False)
         
-        #don't cache Shelved changelists
-        sorted_shelved = sorted([(rev[0], rev[2]) for rev in self._fetch_shelved_logs(userid.lower())], key=itemgetter(0))
+        # Don't cache Shelved changelists
+        sorted_shelved_all = sorted([(rev[0], rev[2]) for rev in self._fetch_shelved_logs(scm_user)], key=itemgetter(0))
+        # Filter ignored shelved changelists
+        sorted_shelved = [ rev for rev in sorted_shelved_all if not rev[0] in changelists_to_be_ignored ]
         
         # Starting with oldest entries first, return first the submitted revisions, then the shelved 
         # changelists because these are considered brand new
