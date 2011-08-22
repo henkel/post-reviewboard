@@ -268,11 +268,16 @@ class PerforceDiffTool:
    
         submit_date = datetime.datetime.fromtimestamp(int(changedesc['time']))        
         time_str = submit_date.strftime("%Y-%m-%d %I:%M %p")
-        
         description = changedesc['change'] + ' by ' + changedesc['user'] + ' on ' + time_str + '\n'
+        if shelved:
+            description = 'shelved ' + description
 
         # Indent commit message
-        indent = ''.ljust(1 + len(changedesc['change']))
+        if shelved:
+            indent = ''.ljust(len('shelved '))
+        else:
+            indent = ''.ljust(1 + len(changedesc['change']))
+            
         description += "".join((indent + line.rstrip() + "\n" for line in changedesc['desc'].splitlines())) + "\n"        
 
         return description
