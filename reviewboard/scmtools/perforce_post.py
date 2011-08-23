@@ -320,7 +320,7 @@ class PerforceDiffTool:
 
 
     def _diff_file(self, old_file, new_file,  local_name,  depot_path,  base_revision,  changetype,  cwd):
-        diff_cmd = ["diff", "-urNp", old_file, new_file]
+        diff_cmd = ["diff", "-uN", old_file, new_file]
         # Diff returns "1" if differences were found.
         dl = execute(diff_cmd, extra_ignore_errors=(1,2)).splitlines(True)
 
@@ -381,13 +381,13 @@ class PerforceDiffTool:
         return dl
 
 
-    def _write_file(self, path, revision, tmpfile, from_changelist):
+    def _write_file(self, path, revision, tmpfile, from_shelved_changelist):
         """
         Grabs a file from Perforce and writes it to a temp file. We do this
         wrather than telling p4 print to write it out in order to work around
         a permissions bug on Windows.
         """
-        data = self.tool.get_file(path, revision, from_changelist)
+        data = self.tool.get_file(path, revision, from_shelved_changelist)
         f = open(tmpfile, "w")
         f.write(data)
         f.close()

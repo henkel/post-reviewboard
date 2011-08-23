@@ -75,13 +75,13 @@ class PerforceTool(SCMTool):
     def get_diffs_use_absolute_paths(self):
         return True
 
-    def get_file(self, path, revision=HEAD, from_changelist=False):
+    def get_file(self, path, revision=HEAD, from_shelved_changelist=False):
         if revision == PRE_CREATION:
             return ''
 
         if revision == HEAD:
             file = path
-        elif from_changelist:
+        elif from_shelved_changelist:
             file = '%s@=%s' % (path, revision)
         else:
             file = '%s#%s' % (path, revision)
@@ -108,6 +108,10 @@ class PerforceTool(SCMTool):
 
             raise SCMError('\n'.join(line.lstrip("\t") for line in error))
         else:
+            if from_shelved_changelist and res != None:
+                # Fix line endings - wrong line endings will cause problems with patch later on
+                # P4 print command might deliver shelved files with wrong line endings
+                res = '\n'.join(res.splitlines())
             return res
 
     def parse_diff_revision(self, file_str, revision_str):
