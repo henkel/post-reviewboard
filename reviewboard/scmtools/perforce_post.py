@@ -203,6 +203,9 @@ class PerforceDiffTool:
             description = ''
             for changelist in changelists:
                 description += self.merge_changelist_into_list_of_modified_files(changelist, modified_files)
+            
+            if len(modified_files) == 0:
+                raise SCMError('There are no files attached to the changelist(s)')
 
             # Create temporary dir and files
             temp_dir_name = mkdtemp(prefix='reviewboard_perforce_post.')
