@@ -108,9 +108,10 @@ class PerforceTool(SCMTool):
 
             raise SCMError('\n'.join(line.lstrip("\t") for line in error))
         else:
-            if from_shelved_changelist and res != None:
-                # Fix line endings - wrong line endings will cause problems with patch later on
-                # P4 print command might deliver shelved files with wrong line endings
+            # Fix line endings
+            if res != None:
+                # P4 print does not properly convert the line endings according to the OS standard
+                # Wrong endings will result in invalid diffs and cause problems with the patch later on
                 res = '\n'.join(res.splitlines())
             return res
 
