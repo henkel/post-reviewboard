@@ -9,6 +9,7 @@ import datetime
 import urllib
 
 from post_utils import DiffFile
+from reviewboard.diffviewer.diffutils import convert_line_endings
 
 from tempfile import mkstemp, mkdtemp
 
@@ -387,12 +388,18 @@ class PerforceDiffTool:
     def _write_file(self, path, revision, tmpfile, from_shelved_changelist):
         """
         Grabs a file from Perforce and writes it to a temp file. We do this
-        wrather than telling p4 print to write it out in order to work around
+        rather than telling p4 print to write it out in order to work around
         a permissions bug on Windows.
         """
         data = self.tool.get_file(path, revision, from_shelved_changelist)
         f = open(tmpfile, "w")
-        f.write(data)
+        
+        # Fix line endings
+        # P4 print does not properly convert the line endings according to the OS standard
+        # Wrong endings will result in invalid diffs and cause problems with the patch later on
+        cleaned_data = convert_line_endings(data)
+        
+        f.write(cleaned_data)
         f.close()
 
     

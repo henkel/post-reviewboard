@@ -54,7 +54,7 @@ class RepositoryRevisionCache:
 
     def set_scm_user(self, userid, scm_user):
         cache_key = self.cache_key_prefix + '.post_scm_user.' + '.' + userid
-        cache.set(cache_key, scm_user, 30 * 3600 * 24) # expires after 1 month
+        cache.set(cache_key, scm_user, 30 * 3600 * 24) # expires after 1 month (max memcached expiration value)
 
 
     def get_latest_commits(self, userid):

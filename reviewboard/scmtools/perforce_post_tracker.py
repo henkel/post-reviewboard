@@ -6,11 +6,10 @@ import urllib
 from datetime import datetime, timedelta
 from operator import itemgetter
 
-from reviewboard.scmtools.perforce_post import PerforcePostCommitTool
-from reviewboard.scmtools.errors import SCMError
-from reviewboard.scmtools.post_utils import get_known_revisions, RepositoryRevisionCache
+from perforce_post import PerforcePostCommitTool
+from errors import SCMError
+from post_utils import get_known_revisions, RepositoryRevisionCache
 
-from django.core.cache import cache
 from django.utils import encoding
 
 def extract_revision_user(line):

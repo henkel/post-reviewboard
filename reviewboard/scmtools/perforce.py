@@ -108,11 +108,6 @@ class PerforceTool(SCMTool):
 
             raise SCMError('\n'.join(line.lstrip("\t") for line in error))
         else:
-            # Fix line endings
-            if res != None:
-                # P4 print does not properly convert the line endings according to the OS standard
-                # Wrong endings will result in invalid diffs and cause problems with the patch later on
-                res = '\n'.join(res.splitlines())
             return res
 
     def parse_diff_revision(self, file_str, revision_str):
