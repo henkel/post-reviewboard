@@ -270,11 +270,12 @@ class PerforceDiffTool:
                 #for normal changelists, the "new" revision is in "rev" and the old one is one less
                 modified_files[path] = DiffStatus(changedesc['rev'][idx], changedesc['action'][idx]) 
    
-        submit_date = datetime.datetime.fromtimestamp(int(changedesc['time']))
         if shelved:        
-            time_str = datetime.datetime.now().strftime("%Y-%m-%d %I:%M %p")
+            submit_date = datetime.datetime.now()
         else:
-            time_str = submit_date.strftime("%Y-%m-%d %I:%M %p")
+            submit_date = datetime.datetime.fromtimestamp(int(changedesc['time']))
+            
+        time_str = submit_date.strftime("%Y-%m-%d %I:%M %p")
 
         description = changedesc['change'] + ' by ' + changedesc['user'] + ' on ' + time_str + '\n'
         if shelved:
