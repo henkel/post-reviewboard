@@ -5,6 +5,8 @@ import subprocess
 import tempfile
 from difflib import SequenceMatcher
 
+import logging
+
 try:
     import pygments
     from pygments.lexers import get_lexer_for_filename
@@ -232,7 +234,11 @@ def patch(diff, file, filename):
         f.close()
 
         log_timer.done()
-
+        logging.warning(_("The patch to '%s' didn't apply cleanly. The temporary " +
+                          "files have been left in '%s' for debugging purposes.\n" +
+                          "`patch` returned: %s") %
+                        (filename, tempdir, patch_output))
+                
         # FIXME: This doesn't provide any useful error report on why the patch
         # failed to apply, which makes it hard to debug.  We might also want to
         # have it clean up if DEBUG=False
