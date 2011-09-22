@@ -476,6 +476,7 @@ class NewPostReviewRequestForm(forms.Form):
         if 'ignore_revisions_button' in self.data:
             # User clicked on ignore_revisions_button
             if 'revisions_choice' in self.cleaned_data:
+                self.data['revisions'] = ''
                 revisions_to_be_ignored = []
                 for rev in self.cleaned_data['revisions_choice']:
                     revisions_to_be_ignored.append(rev)
