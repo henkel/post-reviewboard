@@ -170,6 +170,16 @@ class Screenshot(models.Model):
             'screenshot_id': self.id
         })
 
+    def save(self, **kwargs):
+        super(Screenshot, self).save()
+
+        try:
+            draft = self.drafts.get()
+            draft.timestamp = datetime.now()
+            draft.save()
+        except ReviewRequestDraft.DoesNotExist:
+            pass
+
 
 class ReviewRequest(models.Model):
     """
