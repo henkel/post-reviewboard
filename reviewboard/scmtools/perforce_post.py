@@ -199,7 +199,8 @@ class PerforceDiffTool:
             else:
                 # Use first line of commit message as summary (if it exists)
                 summary = (changelists[0]['desc'].splitlines() or [''])[0].strip()
-
+                summary = summary[0:255]
+            
             modified_files = { }
             description = ''
             for changelist in changelists:
