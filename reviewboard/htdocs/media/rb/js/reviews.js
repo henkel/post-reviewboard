@@ -845,7 +845,7 @@ $.reviewForm = function(review) {
                 stretchY: true,
                 buttons: [
                     $('<input type="button"/>')
-                        .val("Publish & Close Review")                  // This feature is useful in post-commit scenario. TODO: Show this button only if right to close is given!
+                        .val("Publish & Close Review")                  // This feature is useful in post-commit scenario.
                         .click(function(e) {
                             $("#id_shipit", dlg)[0].checked = 1;
                             saveReview(true, true);
@@ -924,6 +924,16 @@ $.reviewForm = function(review) {
             }
         });
 
+        // Fail early, fail loudly: Try to close before publishing it because we may not have close permission
+        if (closeReview) {
+            $.funcQueue("reviewForm").add(function() {
+                gReviewRequest.close({
+                    type: RB.ReviewRequest.CLOSE_SUBMITTED,
+                    success: $.funcQueue("reviewForm").next
+                });
+            });
+        }
+
         $.funcQueue("reviewForm").add(function() {
             review.shipit = $("#id_shipit", dlg)[0].checked ? 1 : 0;
             review.body_top = $(".body-top", dlg).text();;
@@ -942,15 +952,6 @@ $.reviewForm = function(review) {
             }
 
         });
-
-        if (closeReview) {
-            $.funcQueue("reviewForm").add(function() {
-                gReviewRequest.close({
-                    type: RB.ReviewRequest.CLOSE_SUBMITTED,
-                    success: $.funcQueue("reviewForm").next
-                });
-            });
-        }
 
         $.funcQueue("reviewForm").add(function() {
             dlg.modalBox("destroy");
