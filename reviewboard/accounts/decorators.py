@@ -1,9 +1,3 @@
-from urllib import quote
-
-from django.contrib.auth import REDIRECT_FIELD_NAME
-from django.core.urlresolvers import reverse
-from django.http import HttpResponseRedirect
-
 from djblets.auth.util import login_required
 from djblets.siteconfig.models import SiteConfiguration
 from djblets.util.decorators import simple_decorator
@@ -40,16 +34,10 @@ def valid_prefs_required(view_func):
     be used with @check_login_required.
     """
     def _check_valid_prefs(request, *args, **kwargs):
-        try:
-            if (request.user.is_anonymous() or
-                request.user.get_profile().first_time_setup_done):
-                return view_func(request, *args, **kwargs)
-        except Profile.DoesNotExist:
-            pass
+        profile, is_new = Profile.objects.get_or_create(user=request.user)
 
-        return HttpResponseRedirect("%s?%s=%s" %
-                                    (reverse("user-preferences"),
-                                     REDIRECT_FIELD_NAME,
-                                     quote(request.get_full_path())))
+        if is_new:
+            profile.save()
+        return view_func(request, *args, **kwargs)
 
     return _check_valid_prefs

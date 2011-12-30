@@ -82,7 +82,6 @@ var gSelectedAnchor = INVALID;
 var gFileAnchorToId = {};
 var gInterdiffFileAnchorToId = {};
 var gAnchors = $();
-var gCommentDlg = null;
 var gHiddenComments = {};
 var gDiffHighlightBorder = null;
 var gStartAtAnchor = null;
@@ -103,7 +102,7 @@ function DiffCommentBlock(beginRow, endRow, beginLineNum, endLineNum,
                           comments) {
     var self = this;
 
-    var table = beginRow.parents("table:first")
+    var table = beginRow.parents("table:first");
     var fileid = table[0].id;
 
     this.filediff = gFileAnchorToId[fileid];
@@ -147,8 +146,7 @@ function DiffCommentBlock(beginRow, endRow, beginLineNum, endLineNum,
     }
 
     this.anchor = $("<a/>")
-        .attr("name",
-              "file" + this.filediff['id'] + "line" + this.beginLineNum)
+        .attr("name", "file" + this.filediff.id + "line" + this.beginLineNum)
         .addClass("comment-anchor")
         .appendTo(this.el);
 
@@ -164,7 +162,7 @@ function DiffCommentBlock(beginRow, endRow, beginLineNum, endLineNum,
             comment.text = $("<div/>").html(comment.text).text();
 
             if (comment.localdraft) {
-                this._createDraftComment(comment.text);
+                this._createDraftComment(comment.comment_id, comment.text);
             } else {
                 this.comments.push(comment);
             }
@@ -275,13 +273,6 @@ $.extend(DiffCommentBlock.prototype, {
     showCommentDlg: function() {
         var self = this;
 
-        if (gCommentDlg == null) {
-            gCommentDlg = $("#comment-detail")
-                .commentDlg()
-                .css("z-index", 999);
-            gCommentDlg.appendTo("body");
-        }
-
         gCommentDlg
             .one("close", function() {
                 self._createDraftComment();
@@ -300,16 +291,20 @@ $.extend(DiffCommentBlock.prototype, {
             .close();
     },
 
-    _createDraftComment: function(textOnServer) {
+    _createDraftComment: function(id, text) {
         if (this.draftComment != null) {
             return;
         }
 
         var self = this;
         var el = this.el;
-        var comment = new RB.DiffComment(this.filediff, this.interfilediff,
-                                         this.beginLineNum, this.endLineNum,
-                                         textOnServer);
+        var comment = gReviewRequest.createReview().createDiffComment(
+            id, this.filediff, this.interfilediff, this.beginLineNum,
+            this.endLineNum);
+
+        if (text) {
+            comment.text = text;
+        }
 
         $.event.add(comment, "textChanged", function() {
             self.updateTooltip();
@@ -1055,6 +1050,7 @@ function addCommentFlags(table, lines, key) {
 /*
  * Expands a chunk of the diff.
  *
+ * @param {string} review_base_url     The URL of the review request.
  * @param {string} fileid              The file ID.
  * @param {string} filediff_id         The FileDiff ID.
  * @param {string} revision            The revision of the file.
@@ -1062,10 +1058,10 @@ function addCommentFlags(table, lines, key) {
  * @param {int}    chunk_index         The chunk index number.
  * @param {string} tbody_id            The tbody ID to insert into.
  */
-function expandChunk(fileid, filediff_id, revision, interdiff_revision,
-                     chunk_index, link) {
-    gDiff.getDiffFragment(fileid, filediff_id, revision, interdiff_revision,
-                          chunk_index, function(html) {
+function expandChunk(review_base_url, fileid, filediff_id, revision,
+                     interdiff_revision, chunk_index, link) {
+    gDiff.getDiffFragment(review_base_url, fileid, filediff_id, revision,
+                          interdiff_revision, chunk_index, function(html) {
         var tbody = $(link).parents("tbody.diff-header");
         var table = tbody.parent();
         var key = "file" + filediff_id;
@@ -1168,6 +1164,7 @@ function updateAnchors(table) {
  * When the diff is loaded, it will be placed into the appropriate location
  * in the diff viewer, rebuild the anchors, and move on to the next file.
  *
+ * @param {string} review_base_url           The URL of the review request
  * @param {string} filediff_id               The filediff ID
  * @param {string} filediff_revision         The filediff revision
  * @param {string} interfilediff_id          The interfilediff ID (optional)
@@ -1176,17 +1173,15 @@ function updateAnchors(table) {
  * @param {string} file_index                The file index
  * @param {dict}   comment_counts            The comments for this region
  */
-function loadFileDiff(filediff_id, filediff_revision,
-                      interfilediff_id, interfilediff_revision,
-                      file_index,
+function loadFileDiff(review_base_url, filediff_id, filediff_revision,
+                      interfilediff_id, interfilediff_revision, file_index,
                       comment_counts) {
-
     if ($("#file" + filediff_id).length == 1) {
         /* We already have this one. This is probably a pre-loaded file. */
         setupFileDiff();
     } else {
         $.funcQueue("diff_files").add(function() {
-            gDiff.getDiffFile(filediff_id, filediff_revision,
+            gDiff.getDiffFile(review_base_url, filediff_id, filediff_revision,
                               interfilediff_id, interfilediff_revision,
                               file_index, onFileLoaded);
         });

@@ -4,8 +4,24 @@
 Review Board Release Notes
 ==========================
 
+1.6 Releases
+============
+
+.. toctree::
+   :maxdepth: 1
+
+   1.6.3
+   1.6.2
+   1.6.1
+   1.6
+   1.6-rc-2
+   1.6-rc-1
+   1.6-beta-2
+   1.6-beta-1
+
+
 1.5 Releases
-=============================
+============
 
 (The 1.5 release was known as 1.1 in the alphas.)
 

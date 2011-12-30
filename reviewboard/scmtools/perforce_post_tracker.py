@@ -6,11 +6,12 @@ import urllib
 from datetime import datetime, timedelta
 from operator import itemgetter
 
-from perforce_post import PerforcePostCommitTool
+from perforce_post import PerforcePostCommitTool, PerforcePostCommitClient
 from errors import SCMError
 from post_utils import get_known_revisions, RepositoryRevisionCache
 
 from django.utils import encoding
+
 
 def extract_revision_user(line):
     # Try to extract revision info tuple (rev, user, line, shelved) from line
@@ -23,47 +24,28 @@ def extract_revision_user(line):
     return None
 
 
-class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
-    name = "Perforce Post Commit Tracker"
-    
-    freshness_delta = timedelta(days=21)
-    
-    def __init__(self, repository):
-        PerforcePostCommitTool.__init__(self, repository)
-        self.revisionCache = RepositoryRevisionCache('perforce_post_tracker.'+ urllib.quote(str(self.repository.path)), 
-                                                     self.freshness_delta, 
-                                                     self._fetch_log_of_day_uncached)
+class PerforcePostCommitTrackerClient(PerforcePostCommitClient):
+    def __init__(self, p4port, username, password, use_stunnel=False):
+        PerforcePostCommitClient.__init__(self, p4port, username, password, use_stunnel)
 
-
-    def get_fields(self):
-        fields = PerforcePostCommitTool.get_fields(self)
-        fields.append('scm_user')
-        fields.append('revisions_choice')
-        return fields
-
-
-    def get_scm_user(self, userid):
-        return self.revisionCache.get_scm_user(userid)     
-
-
-    def set_scm_user(self, userid, scm_user):
-        self.revisionCache.set_scm_user(userid, scm_user)     
- 
-    
-    def get_missing_revisions(self, userid, scm_user):
-        scm_user = scm_user or userid
-        scm_user = scm_user.lower()
+    def get_missing_revisions(self, userid, scm_user, revisionCache):
+        """
+        Returns revisions that are not yet available in Review Board.
+        """
+        return self._run_worker(lambda: self._get_missing_revisions(userid, scm_user, revisionCache))
+                    
+    def _get_missing_revisions(self, userid, scm_user, revisionCache):
         
         # Fetch user's commits from repository
-        commits = self.revisionCache.get_latest_commits(scm_user)
+        commits = revisionCache.get_latest_commits(scm_user, self._fetch_log_of_day_uncached)
         
         # Fetch the already contained
         known_revisions = get_known_revisions(scm_user, 
-                                              self.repository, 
-                                              self.freshness_delta, 
+                                              self.p4port, 
+                                              revisionCache.get_freshness_delta(), 
                                               extract_revision_user)
 
-        changelists_to_be_ignored = self.revisionCache.get_ignored_revisions(userid)           
+        changelists_to_be_ignored = revisionCache.get_ignored_revisions(userid)           
         
         # Revision exclusion predicate
         isExcluded = lambda rev : rev in known_revisions or rev in changelists_to_be_ignored
@@ -83,10 +65,6 @@ class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
         return sorted_revisions + sorted_shelved
     
     
-    def ignore_revisions(self, userid, new_revisions_to_be_ignored):
-        self.revisionCache.ignore_revisions(userid, new_revisions_to_be_ignored)
-
-
     def _get_log_changelists(self, changelists):
         log = []
         
@@ -109,7 +87,6 @@ class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
 
 
     def _fetch_shelved_logs(self, userid):
-        self._connect()
         try:
             # Shelved changes. Note: those have a key 'shelved': ''
             changes = self.p4.run_changes('-l', '-s', 'shelved', '-u', userid)
@@ -119,7 +96,6 @@ class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
 
 
     def _fetch_log_of_day_uncached(self, day):  
-        self._connect()
         try:
             # Fetch submitted changes
             day_plus_one = day + timedelta(days=1)
@@ -127,3 +103,44 @@ class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
             return self._get_log_changelists(changes)
         except Exception, e:
             raise SCMError('Error fetching revisions: ' +str(e))
+
+        
+
+class PerforcePostCommitTrackerTool(PerforcePostCommitTool):
+    name = "Perforce Post Commit Tracker"
+    
+    freshness_delta = timedelta(days=21)
+    
+    def __init__(self, repository):
+        PerforcePostCommitTool.__init__(self, repository)
+        self.revisionCache = RepositoryRevisionCache('perforce_post_tracker.'+ urllib.quote(str(self.repository.path)), 
+                                                     self.freshness_delta)
+
+    @staticmethod
+    def _create_client(path, username, password):
+        if path.startswith('stunnel:'):
+            path = path[8:]
+            use_stunnel = True
+        else:
+            use_stunnel = False
+        return PerforcePostCommitTrackerClient(path, username, password, use_stunnel)
+
+    def get_fields(self):
+        fields = PerforcePostCommitTool.get_fields(self)
+        fields.append('scm_user')
+        fields.append('revisions_choice')
+        return fields
+
+    def get_scm_user(self, userid):
+        return self.revisionCache.get_scm_user(userid)     
+
+    def set_scm_user(self, userid, scm_user):
+        self.revisionCache.set_scm_user(userid, scm_user)     
+ 
+    def get_missing_revisions(self, userid, scm_user):
+        scm_user = scm_user or userid
+        scm_user = scm_user.lower()
+        return self.client.get_missing_revisions(userid, scm_user, self.revisionCache)
+    
+    def ignore_revisions(self, userid, new_revisions_to_be_ignored):
+        self.revisionCache.ignore_revisions(userid, new_revisions_to_be_ignored)

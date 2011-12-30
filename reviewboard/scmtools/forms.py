@@ -3,6 +3,7 @@ import re
 import sys
 
 from django import forms
+from django.contrib.admin.widgets import FilteredSelectMultiple
 from django.utils.datastructures import SortedDict
 from django.utils.translation import ugettext_lazy as _
 from djblets.util.filesystem import is_exe_in_path
@@ -12,7 +13,9 @@ from reviewboard.scmtools.errors import AuthenticationError, \
                                         BadHostKeyError, \
                                         UnknownHostKeyError, \
                                         UnverifiedCertificateError
-from reviewboard.scmtools.models import Tool
+from reviewboard.scmtools.models import Repository, Tool
+from reviewboard.site.models import LocalSite
+from reviewboard.site.validation import validate_review_groups, validate_users
 
 
 class RepositoryForm(forms.ModelForm):
@@ -70,7 +73,7 @@ class RepositoryForm(forms.ModelForm):
         ('github', {
             'label': _('GitHub'),
             'fields': ['hosting_project_name', 'hosting_owner'],
-            'hidden_fields': ['raw_file_url'],
+            'hidden_fields': ['raw_file_url','username', 'password'],
             'tools': {
                 'Git': {
                     'path': 'git://github.com/%(hosting_owner)s/'
@@ -87,7 +90,7 @@ class RepositoryForm(forms.ModelForm):
         ('github-private', {
             'label': _('GitHub (Private)'),
             'fields': ['hosting_project_name', 'hosting_owner', 'api_token'],
-            'hidden_fields': ['raw_file_url'],
+            'hidden_fields': ['raw_file_url', 'username', 'password'],
             'tools': {
                 'Git': {
                     'path': 'git@github.com:%(hosting_owner)s/'
@@ -99,6 +102,40 @@ class RepositoryForm(forms.ModelForm):
                                     '<revision>'
                                     '?login=%(hosting_owner)s'
                                     '&token=%(api_token)s'
+                },
+            },
+        }),
+        ('github-private-org', {
+            'label': _('GitHub (Private Organization)'),
+            'fields': ['hosting_project_name', 'hosting_owner', 'api_token',
+                       'username'],
+            'hidden_fields': ['raw_file_url', 'password'],
+            'tools': {
+                'Git': {
+                    'path': 'git@github.com:%(hosting_owner)s/'
+                            '%(hosting_project_name)s.git',
+                    'mirror_path': '',
+                    'raw_file_url': 'http://github.com/api/v2/yaml/blob/show/'
+                                    '%(hosting_owner)s/'
+                                    '%(hosting_project_name)s/'
+                                    '<revision>'
+                                    '?login=%(username)s'
+                                    '&token=%(api_token)s'
+                },
+            },
+        }),
+        ('gitorious', {
+            'label': _('Gitorious'),
+            'fields': ['project_slug', 'repository_name'],
+            'hidden_fields': ['raw_file_url','username', 'password'],
+            'tools': {
+                'Git': {
+                    'path': 'git://gitorious.org/%(project_slug)s/'
+                            '%(repository_name)s.git',
+                    'mirror_path': 'http://git.gitorious.org/%(project_slug)s/'
+                                   '%(repository_name)s.git',
+                    'raw_file_url': 'http://git.gitorious.org/%(project_slug)s/'
+                                    '%(repository_name)s/blobs/raw/<revision>'
                 },
             },
         }),
@@ -230,7 +267,7 @@ class RepositoryForm(forms.ModelForm):
 
     HOSTING_FIELDS = [
         "path", "mirror_path", "hosting_owner", "hosting_project_name",
-        "api_token",
+        "api_token", "project_slug", "repository_name",
     ]
 
     BUG_TRACKER_FIELDS = [
@@ -251,20 +288,6 @@ class RepositoryForm(forms.ModelForm):
         required=False)
 
     # Fields
-    name = forms.CharField(
-        label=_("Name"),
-        max_length=64,
-        required=True,
-        widget=forms.TextInput(attrs={'size': '30'}))
-
-    visible = forms.BooleanField(
-        label=_('Show this repository'),
-        help_text=_('Use this to control whether or not a repository is '
-                    'shown when creating new review requests. Existing '
-                    'review requests are unaffected.'),
-        initial=True,
-        required=False)
-
     hosting_type = forms.ChoiceField(
         label=_("Hosting service"),
         required=True,
@@ -284,35 +307,17 @@ class RepositoryForm(forms.ModelForm):
         required=False,
         widget=forms.TextInput(attrs={'size': '30'}))
 
-    path = forms.CharField(
-        label=_("Path"),
-        max_length=255,
-        required=True,
-        widget=forms.TextInput(attrs={'size': '60'}),
-        help_text=_("This should be the path to the repository. For most "
-                    "version control systems, this will be a URI of some "
-                    "form or another. For CVS, this should be a pserver "
-                    "path. For Perforce, this should be a port name. For "
-                    "git, this should be the path to the .git repository "
-                    "on the local disk."))
-
-    mirror_path = forms.CharField(
-        label=_("Mirror path"),
+    project_slug = forms.CharField(
+        label=_("Project slug"),
         max_length=256,
         required=False,
-        widget=forms.TextInput(attrs={'size': '60'}))
+        widget=forms.TextInput(attrs={'size': '30'}))
 
-    raw_file_url = forms.CharField(
-        label=_("Raw file URL mask"),
+    repository_name = forms.CharField(
+        label=_("Repository name"),
         max_length=256,
         required=False,
-        widget=forms.TextInput(attrs={'size': '60'}),
-        help_text=_("A URL mask used to check out a particular revision of a "
-                    "file using HTTP. This is needed for repository types "
-                    "that can't access remote files natively. "
-                    "Use <tt>&lt;revision&gt;</tt> and "
-                    "<tt>&lt;filename&gt;</tt> in the URL in place of the "
-                    "revision and filename parts of the path."))
+        widget=forms.TextInput(attrs={'size': '30'}))
 
     api_token = forms.CharField(
         label=_("API token"),
@@ -362,36 +367,6 @@ class RepositoryForm(forms.ModelForm):
         help_text=_("This should be the path to the bug tracker for this "
                     "repository."))
 
-    bug_tracker = forms.CharField(
-        label=_("Bug tracker URL"),
-        max_length=256,
-        required=False,
-        widget=forms.TextInput(attrs={'size': '60'}),
-        help_text=_("This should be the full path to a bug in the bug tracker "
-                    "for this repository, using '%s' in place of the bug ID."))
-
-    username = forms.CharField(
-        label=_("Username"),
-        max_length=32,
-        required=False,
-        widget=forms.TextInput(attrs={'size': '30',
-                                      'autocomplete': 'off'}))
-
-    password = forms.CharField(
-        label=_("Password"),
-        required=False,
-        widget=forms.PasswordInput(attrs={'size': '30',
-                                          'autocomplete': 'off'}))
-
-    encoding = forms.CharField(
-        label=_("Encoding"),
-        max_length=32,
-        required=False,
-        help_text=_("The encoding used for files in this repository. This is "
-                    "an advanced setting and should only be used if you're "
-                    "sure you need it."))
-
-
     def __init__(self, *args, **kwargs):
         super(RepositoryForm, self).__init__(*args, **kwargs)
 
@@ -399,7 +374,15 @@ class RepositoryForm(forms.ModelForm):
         self.certerror = None
         self.userkeyerror = None
 
-        self.public_key = sshutils.get_public_key(sshutils.get_user_key())
+        local_site_name = None
+
+        if self.instance and self.instance.local_site:
+            local_site_name = self.instance.local_site.name
+        elif self.fields['local_site'].initial:
+            local_site_name = self.fields['local_site'].initial.name
+
+        self.public_key = \
+            sshutils.get_public_key(sshutils.get_user_key(local_site_name))
 
         self._populate_hosting_service_fields()
         self._populate_bug_tracker_fields()
@@ -565,6 +548,9 @@ class RepositoryForm(forms.ModelForm):
         self._clean_hosting_info()
         self._clean_bug_tracker_info()
 
+        validate_review_groups(self)
+        validate_users(self)
+
         if not self.cleaned_data['reedit_repository']:
             self._verify_repository_path()
 
@@ -694,11 +680,21 @@ class RepositoryForm(forms.ModelForm):
         username = self.cleaned_data['username']
         password = self.cleaned_data['password']
 
+        local_site_name = None
+
+        if self.cleaned_data['local_site']:
+            try:
+                local_site = self.cleaned_data['local_site']
+                local_site_name = local_site.name
+            except LocalSite.DoesNotExist, e:
+                raise forms.ValidationError(e)
+
         while 1:
             # Keep doing this until we have an error we don't want
             # to ignore, or it's successful.
             try:
-                scmtool_class.check_repository(path, username, password)
+                scmtool_class.check_repository(path, username, password,
+                                               local_site_name)
 
                 # Success.
                 break
@@ -707,7 +703,8 @@ class RepositoryForm(forms.ModelForm):
                     try:
                         sshutils.replace_host_key(e.hostname,
                                                   e.raw_expected_key,
-                                                  e.raw_key)
+                                                  e.raw_key,
+                                                  local_site_name)
                     except IOError, e:
                         raise forms.ValidationError(e)
                 else:
@@ -716,7 +713,8 @@ class RepositoryForm(forms.ModelForm):
             except UnknownHostKeyError, e:
                 if self.cleaned_data['trust_host']:
                     try:
-                        sshutils.add_host_key(e.hostname, e.raw_key)
+                        sshutils.add_host_key(e.hostname, e.raw_key,
+                                              local_site_name)
                     except IOError, e:
                         raise forms.ValidationError(e)
                 else:
@@ -725,7 +723,7 @@ class RepositoryForm(forms.ModelForm):
             except UnverifiedCertificateError, e:
                 if self.cleaned_data['trust_host']:
                     try:
-                        scmtool_class.accept_certificate(path)
+                        scmtool_class.accept_certificate(path, local_site_name)
                     except IOError, e:
                         raise forms.ValidationError(e)
                 else:
@@ -739,3 +737,19 @@ class RepositoryForm(forms.ModelForm):
                 raise forms.ValidationError(e)
             except Exception, e:
                 raise forms.ValidationError(e)
+
+    class Meta:
+        model = Repository
+        widgets = {
+            'path': forms.TextInput(attrs={'size': '60'}),
+            'mirror_path': forms.TextInput(attrs={'size': '60'}),
+            'raw_file_url': forms.TextInput(attrs={'size': '60'}),
+            'bug_tracker': forms.TextInput(attrs={'size': '60'}),
+            'username': forms.TextInput(attrs={'size': '30',
+                                               'autocomplete': 'off'}),
+            'password': forms.PasswordInput(attrs={'size': '30',
+                                                   'autocomplete': 'off'}),
+            'users': FilteredSelectMultiple(_('users with access'), False),
+            'review_groups': FilteredSelectMultiple(
+                _('review groups with access'), False),
+        }

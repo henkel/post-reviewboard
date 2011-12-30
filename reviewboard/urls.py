@@ -2,15 +2,16 @@ from django.conf import settings
 from django.conf.urls.defaults import patterns, include, url
 from django.contrib import admin
 
-from reviewboard.reviews.feeds import RssReviewsFeed, AtomReviewsFeed, \
-                                      RssSubmitterReviewsFeed, \
-                                      AtomSubmitterReviewsFeed, \
-                                      RssGroupReviewsFeed, \
-                                      AtomGroupReviewsFeed
+from reviewboard.webapi.resources import root_resource
 from reviewboard import initialize
 
 
 initialize()
+
+
+handler404 = 'django.views.defaults.page_not_found'
+handler500 = 'django.views.defaults.server_error'
+
 
 # Load in all the models for the admin UI.
 if not admin.site._registry:
@@ -28,70 +29,53 @@ if settings.DEBUG or getattr(settings, 'RUNNING_TEST', False):
         (r'^media/(?P<path>.*)$', 'serve', {
             'show_indexes': True,
             'document_root': settings.MEDIA_ROOT,
-            }),
+        })
     )
 
-rss_feeds = {
-    'r': RssReviewsFeed,
-    'users': RssSubmitterReviewsFeed,
-    'groups': RssGroupReviewsFeed,
-}
+localsite_urlpatterns = patterns('',
+    url(r'^$', 'django.views.generic.simple.redirect_to',
+        {'url': 'dashboard/'},
+        name="root"),
 
+    (r'^api/', include(root_resource.get_url_patterns())),
+    (r'^r/', include('reviewboard.reviews.urls')),
 
-atom_feeds = {
-    'r': AtomReviewsFeed,
-    'users': AtomSubmitterReviewsFeed,
-    'groups': AtomGroupReviewsFeed,
-}
+    # Dashboard
+    url(r'^dashboard/$',
+        'reviewboard.reviews.views.dashboard', name="dashboard"),
+
+    # Users
+    url(r'^users/$',
+        'reviewboard.reviews.views.submitter_list', name="all-users"),
+    url(r'^users/(?P<username>[A-Za-z0-9@_\-\.]+)/$',
+        'reviewboard.reviews.views.submitter', name="user"),
+    url(r'^users/(?P<username>[A-Za-z0-9@_\-\.]+)/infobox/$',
+        'reviewboard.reviews.views.user_infobox', name="user-infobox"),
+
+    # Groups
+    url(r'^groups/$',
+        'reviewboard.reviews.views.group_list', name="all-groups"),
+    url(r'^groups/(?P<name>[A-Za-z0-9_-]+)/$',
+        'reviewboard.reviews.views.group', name="group"),
+    url(r'^groups/(?P<name>[A-Za-z0-9_-]+)/members/$',
+        'reviewboard.reviews.views.group_members', name="group_members"),
+)
 
 
 # Main includes
 urlpatterns += patterns('',
     (r'^account/', include('reviewboard.accounts.urls')),
-    (r'^api/', include('reviewboard.webapi.urls')),
-    (r'^r/', include('reviewboard.reviews.urls')),
     (r'^reports/', include('reviewboard.reports.urls')),
+
+    (r'^s/(?P<local_site_name>[A-Za-z0-9\-_.]+)/',
+     include(localsite_urlpatterns)),
 )
 
-
-# reviewboard.reviews.views
-urlpatterns += patterns('reviewboard.reviews.views',
-    # Review request browsing
-    url(r'^dashboard/$', 'dashboard', name="dashboard"),
-
-    # Users
-    url(r'^users/$', 'submitter_list', name="all-users"),
-    url(r'^users/(?P<username>[A-Za-z0-9@_\-\.]+)/$', 'submitter',
-        name="user"),
-
-    # Groups
-    url(r'^groups/$', 'group_list', name="all-groups"),
-    url(r'^groups/(?P<name>[A-Za-z0-9_-]+)/$', 'group', name="group"),
-    url(r'^groups/(?P<name>[A-Za-z0-9_-]+)/members/$', 'group_members', name="group_members"),
-)
+urlpatterns += localsite_urlpatterns
 
 
 # django.contrib
 urlpatterns += patterns('django.contrib',
-   # Feeds
-    url(r'^feeds/rss/(?P<url>.*)/$', 'syndication.views.feed',
-        {'feed_dict': rss_feeds},
-        name="rss-feed"),
-    url(r'^feeds/atom/(?P<url>.*)/$', 'syndication.views.feed',
-       {'feed_dict': atom_feeds},
-       name="atom-feed"),
     url(r'^account/logout/$', 'auth.views.logout',
-        {'next_page': settings.LOGIN_URL},
-        name="logout")
-)
-
-
-# And the rest ...
-urlpatterns += patterns('',
-    url(r'^$', 'django.views.generic.simple.redirect_to',
-        {'url': 'dashboard/'},
-        name="root"),
-
-    # This must be last.
-    url(r'^iphone/', include('reviewboard.iphone.urls', namespace='iphone')),
+        {'next_page': settings.LOGIN_URL}, name="logout")
 )

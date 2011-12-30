@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.core.urlresolvers import reverse
-from django.db.models import Q, Count
+from django.http import Http404
+from django.utils.datastructures import SortedDict
 from django.utils.html import conditional_escape
 from django.utils.translation import ugettext_lazy as _
 from djblets.datagrid.grids import Column, DateTimeColumn, \
@@ -11,6 +11,7 @@ from djblets.util.templatetags.djblets_utils import ageid
 from reviewboard.accounts.models import Profile
 from reviewboard.reviews.models import Group, ReviewRequest
 from reviewboard.reviews.templatetags.reviewtags import render_star
+from reviewboard.site.urlresolvers import local_site_reverse
 
 
 class StarColumn(Column):
@@ -267,21 +268,21 @@ class SummaryColumn(Column):
         if review_request.submitter_id == self.datagrid.request.user.id:
             if review_request.draft_summary is not None:
                 summary = conditional_escape(review_request.draft_summary)
-                return self.__labeled_summary(_('Draft'), summary)
+                return self.__labeled_summary(_('Draft'), summary, 'label-draft')
 
             if (not review_request.public and
                 review_request.status == ReviewRequest.PENDING_REVIEW):
-                return self.__labeled_summary(_('Draft'), summary)
+                return self.__labeled_summary(_('Draft'), summary, 'label-draft')
 
         if review_request.status == ReviewRequest.SUBMITTED:
-            return self.__labeled_summary(_('Submitted'), summary)
+            return self.__labeled_summary(_('Submitted'), summary, 'label-submitted')
         elif review_request.status == ReviewRequest.DISCARDED:
-            return self.__labeled_summary(_('Discarded'), summary)
+            return self.__labeled_summary(_('Discarded'), summary, 'label-discarded')
 
         return summary
 
-    def __labeled_summary(self, label, summary):
-        return u'<span class="draftlabel">[%s]</span> %s' % (label, summary)
+    def __labeled_summary(self, label, summary, label_class):
+        return u'<span class="%s">[%s]</span> %s' % (label_class, label, summary)
 
 
 class SubmitterColumn(Column):
@@ -292,6 +293,17 @@ class SubmitterColumn(Column):
 
     def augment_queryset(self, queryset):
         return queryset.select_related('submitter')
+
+
+class RepositoryColumn(Column):
+    def __init__(self, *args, **kwargs):
+        Column.__init__(self, _("Repository"), db_field="repository__name",
+                        shrink=True, sortable=True, link=False,
+                        css_class='repository-column',
+                        *args, **kwargs)
+
+    def augment_queryset(self, queryset):
+        return queryset.select_related('repository')
 
 
 class PendingCountColumn(Column):
@@ -371,7 +383,9 @@ class GroupMemberCountColumn(Column):
         return str(group.users.count())
 
     def link_to_object(self, group, value):
-        return reverse('group_members', args=[group.name])
+        return local_site_reverse('group_members',
+                                  request=self.datagrid.request,
+                                  args=[group.name])
 
 
 class ReviewCountColumn(Column):
@@ -425,9 +439,7 @@ class ReviewRequestDataGrid(DataGrid):
                           shrink=True, sortable=True, link=False)
     bugs_closed  = Column(_("Bugs"), db_field="bugs_closed",
                           shrink=True, sortable=False, link=False)
-    repository   = Column(_("Repository"), db_field="repository__name",
-                          shrink=True, sortable=True, link=False,
-                          css_class='repository-column')
+    repository   = RepositoryColumn()
     time_added   = DateTimeColumn(_("Posted"),
         detailed_label=_("Posted Time"),
         format="F jS, Y, P", shrink=True,
@@ -458,6 +470,9 @@ class ReviewRequestDataGrid(DataGrid):
 
     review_count = ReviewCountColumn()
 
+    target_groups = GroupsColumn()
+    target_people = PeopleColumn()
+
     review_id = Column(_("Review ID"), field_name="id", db_field="id",
                        shrink=True, sortable=True, link=True)
 
@@ -466,6 +481,7 @@ class ReviewRequestDataGrid(DataGrid):
 
 
     def __init__(self, *args, **kwargs):
+        self.local_site = kwargs.pop('local_site', None)
         DataGrid.__init__(self, *args, **kwargs)
         self.listview_template = 'reviews/review_request_listview.html'
         self.profile_sort_field = 'sort_review_request_columns'
@@ -498,6 +514,7 @@ class ReviewRequestDataGrid(DataGrid):
             self.queryset = self.queryset.filter(status='P')
 
         self.enableSortingOnVirtualColumns()
+        self.queryset = self.queryset.filter(local_site=self.local_site)
 
         if profile and self.show_submitted != profile.show_submitted:
             profile.show_submitted = self.show_submitted
@@ -506,12 +523,13 @@ class ReviewRequestDataGrid(DataGrid):
         return False
 
     def post_process_queryset(self, queryset):
-        return super(ReviewRequestDataGrid, self).post_process_queryset(
-            queryset.with_counts(self.request.user))
+        q = queryset.with_counts(self.request.user)
+        return super(ReviewRequestDataGrid, self).post_process_queryset(q)
 
     def link_to_object(self, obj, value):
         if value and isinstance(value, User):
-            return reverse("user", args=[value])
+            return local_site_reverse("user", request=self.request,
+                                      args=[value])
 
         return obj.get_absolute_url()
 
@@ -553,6 +571,7 @@ class DashboardDataGrid(ReviewRequestDataGrid):
 
 
     def __init__(self, *args, **kwargs):
+        local_site = kwargs.pop('local_site', None)
         ReviewRequestDataGrid.__init__(self, *args, **kwargs)
         self.listview_template = 'datagrid/listview.html'
         self.profile_sort_field = 'sort_dashboard_columns'
@@ -577,6 +596,7 @@ class DashboardDataGrid(ReviewRequestDataGrid):
             extra_query.append("group=%s" % group)
 
         self.extra_context['extra_query'] = "&".join(extra_query)
+        self.local_site = local_site
 
     def load_extra_state(self, profile):
         group = self.request.GET.get('group', '')
@@ -584,34 +604,46 @@ class DashboardDataGrid(ReviewRequestDataGrid):
         user = self.request.user
 
         if view == 'outgoing':
-            self.queryset = ReviewRequest.objects.from_user(user, user)
+            self.queryset = ReviewRequest.objects.from_user(
+                user, user, local_site=self.local_site)
             self.title = _(u"All Outgoing Review Requests")
         elif view == 'mine':
-            self.queryset = ReviewRequest.objects.from_user(user, user, None)
+            self.queryset = ReviewRequest.objects.from_user(
+                user, user, None, local_site=self.local_site)
             self.title = _(u"All My Review Requests")
         elif view == 'to-me':
-            self.queryset = \
-                ReviewRequest.objects.to_user_directly(user, user)
+            self.queryset = ReviewRequest.objects.to_user_directly(
+                user, user, local_site=self.local_site)
             self.title = _(u"Incoming Review Requests to Me")
         elif view == 'to-group':
             if group != "":
-                self.queryset = ReviewRequest.objects.to_group(group, user)
+                # to-group is special because we want to make sure that the
+                # group exists and show a 404 if it doesn't. Otherwise, we'll
+                # show an empty datagrid with the name.
+                if not Group.objects.filter(name=group,
+                                            local_site=self.local_site).exists():
+                    raise Http404
+                self.queryset = ReviewRequest.objects.to_group(
+                    group, self.local_site, user)
                 self.title = _(u"Incoming Review Requests to %s") % group
             else:
-                self.queryset = \
-                    ReviewRequest.objects.to_user_groups(user, user)
+                self.queryset = ReviewRequest.objects.to_user_groups(
+                    user, user, local_site=self.local_site)
                 self.title = _(u"All Incoming Review Requests to My Groups")
         elif view == 'starred':
             profile = user.get_profile()
-            self.queryset = \
-                profile.starred_review_requests.public(user)
+            self.queryset = profile.starred_review_requests.public(
+                user, local_site=self.local_site)
             self.title = _(u"Starred Review Requests")
-        else: # "incoming" or invalid
-            self.queryset = ReviewRequest.objects.to_user(user, user)
+        elif view == 'incoming':
+            self.queryset = ReviewRequest.objects.to_user(
+                user, user, local_site=self.local_site)
             self.title = _(u"All Incoming Review Requests")
+        else:
+            raise Http404
 
         # Pre-load all querysets for the sidebar.
-        self.counts = get_sidebar_counts(user)
+        self.counts = get_sidebar_counts(user, self.local_site)
 
         self.enableSortingOnVirtualColumns()
 
@@ -631,8 +663,14 @@ class SubmitterDataGrid(DataGrid):
 
     def __init__(self, request,
                  queryset=User.objects.filter(is_active=True),
-                 title=_("All submitters")):
-        DataGrid.__init__(self, request, queryset, title)
+                 title=_("All submitters"),
+                 local_site=None):
+        if local_site:
+            qs = queryset.filter(local_site=local_site)
+        else:
+            qs = queryset
+
+        DataGrid.__init__(self, request, qs, title)
         self.default_sort = ["username"]
         self.profile_sort_field = 'sort_submitter_columns'
         self.profile_columns_field = 'submitter_columns'
@@ -640,9 +678,9 @@ class SubmitterDataGrid(DataGrid):
             "username", "fullname", "pending_count"
         ]
 
-    @staticmethod
-    def link_to_object(obj, value):
-        return reverse("user", args=[obj.username])
+    def link_to_object(self, obj, value):
+        return local_site_reverse("user", request=self.request,
+                                  args=[obj.username])
 
 
 class GroupDataGrid(DataGrid):
@@ -662,8 +700,11 @@ class GroupDataGrid(DataGrid):
                                            shrink=True)
 
     def __init__(self, request, title=_("All groups"), *args, **kwargs):
-        DataGrid.__init__(self, request, queryset=Group.objects.all(),
-                          title=title, *args, **kwargs)
+        local_site = kwargs.pop('local_site', None)
+        queryset = Group.objects.accessible(request.user, local_site=local_site)
+
+        DataGrid.__init__(self, request, queryset=queryset, title=title,
+                          *args, **kwargs)
         self.profile_sort_field = 'sort_group_columns'
         self.profile_columns_field = 'group_columns'
         self.default_sort = ["name"]
@@ -673,7 +714,7 @@ class GroupDataGrid(DataGrid):
 
     @staticmethod
     def link_to_object(obj, value):
-        return reverse("group", args=[obj.name])
+        return obj.get_absolute_url()
 
 
 class WatchedGroupDataGrid(GroupDataGrid):
@@ -683,43 +724,49 @@ class WatchedGroupDataGrid(GroupDataGrid):
     dashboard.
     """
     def __init__(self, request, title=_("Watched groups"), *args, **kwargs):
+        local_site = kwargs.pop('local_site', None)
         GroupDataGrid.__init__(self, request, title=title, *args, **kwargs)
         user = request.user
         profile = user.get_profile()
+
         self.queryset = profile.starred_groups.all()
+        self.queryset = self.queryset.filter(local_site=local_site)
 
         # Pre-load all querysets for the sidebar.
-        self.counts = get_sidebar_counts(user)
+        self.counts = get_sidebar_counts(user, local_site)
 
     def link_to_object(self, group, value):
         return ".?view=to-group&group=%s" % group.name
 
 
-def get_sidebar_counts(user):
+def get_sidebar_counts(user, local_site):
     """Returns counts used for the Dashboard sidebar."""
     profile = user.get_profile()
 
+    site_profile, is_new = user.get_profile().site_profiles.get_or_create(
+        local_site=local_site,
+        user=user,
+        profile=profile)
+
+    if is_new:
+        site_profile.save()
+
     counts = {
-        'outgoing': ReviewRequest.objects.from_user(user, user).count(),
-        'incoming': ReviewRequest.objects.to_user(user, user).count(),
-        'to-me': ReviewRequest.objects.to_user_directly(user, user).count(),
-        'starred': profile.starred_review_requests.public(user).count(),
-        'mine': ReviewRequest.objects.from_user(user, user, None).count(),
-        'groups': {}
+        'outgoing': site_profile.pending_outgoing_request_count,
+        'incoming': site_profile.total_incoming_request_count,
+        'to-me': site_profile.direct_incoming_request_count,
+        'starred': site_profile.starred_public_request_count,
+        'mine': site_profile.total_outgoing_request_count,
+        'groups': SortedDict(),
+        'starred_groups': SortedDict(),
     }
 
-    q = Group.objects.filter(Q(users=user) | Q(starred_by=user)).distinct()
-    group_names = list(q.values_list('name', flat=True))
+    for group in Group.objects.filter(
+            users=user, local_site=local_site).order_by('name'):
+        counts['groups'][group.name] = group.incoming_request_count
 
-    q = Group.objects.filter(name__in=group_names)
-    q = q.filter((Q(review_requests__public=True) |
-                  Q(review_requests__submitter=user)) &
-                  Q(review_requests__submitter__is_active=True) &
-                  Q(review_requests__status='P'))
-    q = q.annotate(Count('review_requests'))
-
-    for group in q.values('name', 'review_requests__count'):
-        counts['groups'][group['name']] = \
-            group['review_requests__count']
+    for group in Group.objects.filter(
+            starred_by=user, local_site=local_site).order_by('name'):
+        counts['starred_groups'][group.name] = group.incoming_request_count
 
     return counts

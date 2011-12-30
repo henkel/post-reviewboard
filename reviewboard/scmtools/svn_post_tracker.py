@@ -38,8 +38,7 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
     def __init__(self, repository):
         SVNPostCommitTool.__init__(self, repository)
         self.revisionCache = RepositoryRevisionCache('svn_post_tracker.'+ urllib.quote(self.repopath), 
-                                                     self.freshness_delta, 
-                                                     self._fetch_log_of_day_uncached)
+                                                     self.freshness_delta)
     
     
     def get_fields(self):
@@ -50,12 +49,12 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
     
     def get_missing_revisions(self, userid, scm_user):
         # Fetch user's commits from repository
-        commits = self.revisionCache.get_latest_commits(userid)
+        commits = self.revisionCache.get_latest_commits(userid, self._fetch_log_of_day_uncached)
         
         # Fetch the already contained
         known_revisions = get_known_revisions(userid, 
                                               self.repository, 
-                                              self.freshness_delta, 
+                                              self.revisionCache.get_freshness_delta(), 
                                               extract_revision_user)
         
         commits_to_be_ignored = self.revisionCache.get_ignored_revisions(userid)        
@@ -98,7 +97,11 @@ class SVNPostCommitTrackerTool(SVNPostCommitTool):
                              desc))
                        
         except pysvn.ClientError, e:
-            raise SCMError('Error fetching revisions: ' +str(e))
+            stre = str(e)
+            if 'callback_get_login required' in stre:
+                raise SCMError('Login to the SCM server failed.')
+            else:
+                raise SCMError('Error fetching revisions: ' +str(e))
         
         return log      
         

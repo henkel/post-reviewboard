@@ -1,9 +1,19 @@
+import errno
 import imp
 import os
 import nose
+import paramiko
+import shutil
+import socket
+import tempfile
+try:
+    from hashlib import md5
+except ImportError:
+    from md5 import md5
 
-from django.conf import settings
+from django.contrib.auth.models import AnonymousUser, User
 from django.test import TestCase as DjangoTestCase
+from djblets.util.filesystem import is_exe_in_path
 try:
     imp.find_module("P4")
     from P4 import P4Error
@@ -12,24 +22,120 @@ except ImportError:
 
 from reviewboard.diffviewer.diffutils import patch
 from reviewboard.diffviewer.parser import DiffParserError
-from reviewboard.scmtools.bzr import BZRTool
+from reviewboard.reviews.models import Group
+from reviewboard.scmtools import sshutils
 from reviewboard.scmtools.core import HEAD, PRE_CREATION, ChangeSet, Revision
-from reviewboard.scmtools.errors import SCMError, FileNotFoundError
+from reviewboard.scmtools.errors import SCMError, FileNotFoundError, \
+                                        RepositoryNotFoundError, \
+                                        AuthenticationError
+from reviewboard.scmtools.forms import RepositoryForm
 from reviewboard.scmtools.git import ShortSHA1Error
 from reviewboard.scmtools.models import Repository, Tool
+from reviewboard.scmtools.perforce import STunnelProxy, STUNNEL_SERVER
+from reviewboard.site.models import LocalSite
 
 
-def _get_repo_test_info(repo_key):
-    prefix = 'TEST_REPO_%s' % repo_key
-    repo_path = getattr(settings, '%s_PATH' % prefix, None)
+class SCMTestCase(DjangoTestCase):
+    _can_test_ssh = None
 
-    if not repo_path:
-        raise nose.SkipTest('settings.%s_PATH is not defined' % prefix)
+    def setUp(self):
+        self.old_home = os.getenv('HOME')
+        self.tempdir = None
+        self.tool = None
+        os.environ['RBSSH_ALLOW_AGENT'] = '0'
 
-    username = getattr(settings, '%s_USER' % prefix, None)
-    password = getattr(settings, '%s_PASS' % prefix, None)
+    def tearDown(self):
+        self._set_home(self.old_home)
 
-    return repo_path, username, password
+        if self.tempdir:
+            shutil.rmtree(self.tempdir)
+
+    def _set_home(self, homedir):
+        os.environ['HOME'] = homedir
+
+    def _check_can_test_ssh(self):
+        if SCMTestCase._can_test_ssh is None:
+            key = sshutils.get_user_key()
+
+            SCMTestCase._can_test_ssh = (key is not None and
+                                         sshutils.is_key_authorized(key))
+
+        if not SCMTestCase._can_test_ssh:
+            raise nose.SkipTest(
+                "Cannot perform SSH access tests. The local user's SSH "
+                "public key must be in the %s file and SSH must be enabled."
+                % os.path.join(sshutils.get_ssh_dir(), 'authorized_keys'))
+
+    def _test_ssh(self, repo_path, filename=None):
+        self._check_can_test_ssh()
+
+        repo = Repository(name='SSH Test', path=repo_path,
+                          tool=self.repository.tool)
+        tool = repo.get_scmtool()
+
+        try:
+            tool.check_repository(repo_path)
+        except socket.error, e:
+            if e.errno == errno.ECONNREFUSED:
+                # This box likely isn't set up for this test.
+                SCMTestCase._can_test_ssh = False
+                raise nose.SkipTest(
+                    "Cannot perform SSH access tests. No local SSH service is "
+                    "running.")
+            else:
+                raise
+
+        if filename:
+            self.assertNotEqual(tool.get_file(filename, HEAD), None)
+
+    def _test_ssh_with_site(self, repo_path, filename=None):
+        """Utility function to test SSH access with a LocalSite."""
+        self._check_can_test_ssh()
+
+        # Get the user's .ssh key, for use in the tests
+        user_key = sshutils.get_user_key()
+        self.assertNotEqual(user_key, None)
+
+        # Switch to a new SSH directory.
+        self.tempdir = tempfile.mkdtemp(prefix='rb-tests-home-')
+        sshdir = os.path.join(self.tempdir, '.ssh')
+        self._set_home(self.tempdir)
+
+        self.assertEqual(sshdir, sshutils.get_ssh_dir())
+        self.assertFalse(os.path.exists(os.path.join(sshdir, 'id_rsa')))
+        self.assertFalse(os.path.exists(os.path.join(sshdir, 'id_dsa')))
+        self.assertEqual(sshutils.get_user_key(), None)
+
+        tool_class = self.repository.tool
+
+        # Make sure we aren't using the old SSH key. We want auth errors.
+        repo = Repository(name='SSH Test', path=repo_path, tool=tool_class)
+        tool = repo.get_scmtool()
+        self.assertRaises(sshutils.AuthenticationError,
+                          lambda: tool.check_repository(repo_path))
+
+        if filename:
+            self.assertRaises(SCMError,
+                              lambda: tool.get_file(filename, HEAD));
+
+        for local_site_name in ('site-1',):
+            local_site = LocalSite(name=local_site_name)
+            local_site.save()
+
+            repo = Repository(name='SSH Test', path=repo_path, tool=tool_class,
+                              local_site=local_site)
+            tool = repo.get_scmtool()
+
+            self.assertEqual(sshutils.get_ssh_dir(local_site_name),
+                             os.path.join(sshdir, local_site_name))
+            sshutils.import_user_key(user_key, local_site_name)
+            self.assertEqual(sshutils.get_user_key(local_site_name), user_key)
+
+            # Make sure we can verify the repository and access files.
+            tool.check_repository(repo_path, local_site_name=local_site_name)
+
+            if filename:
+                self.assertNotEqual(tool.get_file(filename, HEAD), None)
 
 
 class CoreTests(DjangoTestCase):
@@ -48,28 +154,145 @@ class CoreTests(DjangoTestCase):
         self.assert_(len(cs.files) == 0)
 
 
-class BZRTests(DjangoTestCase):
+class SSHUtilsTests(SCMTestCase):
+    """Unit tests for sshutils."""
+    def setUp(self):
+        super(SSHUtilsTests, self).setUp()
+
+        self.tempdir = tempfile.mkdtemp(prefix='rb-tests-home-')
+
+    def test_get_ssh_dir_with_dot_ssh(self):
+        """Testing sshutils.get_ssh_dir with ~/.ssh"""
+        self._set_home(self.tempdir)
+        sshdir = os.path.join(self.tempdir, '.ssh')
+        self.assertEqual(sshutils.get_ssh_dir(), sshdir)
+
+    def test_get_ssh_dir_with_ssh(self):
+        """Testing sshutils.get_ssh_dir with ~/ssh"""
+        self._set_home(self.tempdir)
+        sshdir = os.path.join(self.tempdir, 'ssh')
+        os.mkdir(sshdir, 0700)
+        self.assertEqual(sshutils.get_ssh_dir(), sshdir)
+
+    def test_get_ssh_dir_with_dot_ssh_and_localsite(self):
+        """Testing sshutils.get_ssh_dir with ~/.ssh and localsite"""
+        self._set_home(self.tempdir)
+        sshdir = os.path.join(self.tempdir, '.ssh', 'site-1')
+        self.assertEqual(sshutils.get_ssh_dir(local_site_name='site-1'), sshdir)
+
+    def test_get_ssh_dir_with_ssh_and_localsite(self):
+        """Testing sshutils.get_ssh_dir with ~/ssh and localsite"""
+        self._set_home(self.tempdir)
+        sshdir = os.path.join(self.tempdir, 'ssh')
+        os.mkdir(sshdir, 0700)
+        sshdir = os.path.join(sshdir, 'site-1')
+        self.assertEqual(sshutils.get_ssh_dir(local_site_name='site-1'), sshdir)
+
+    def test_generate_user_key(self, local_site_name=None):
+        """Testing sshutils.generate_user_key"""
+        self._set_home(self.tempdir)
+        key = sshutils.generate_user_key(local_site_name)
+        key_file = os.path.join(sshutils.get_ssh_dir(local_site_name), 'id_rsa')
+        self.assertTrue(os.path.exists(key_file))
+        self.assertEqual(sshutils.get_user_key(local_site_name), key)
+
+    def test_generate_user_key_with_localsite(self):
+        """Testing sshutils.generate_user_key with localsite"""
+        self.test_generate_user_key('site-1')
+
+    def test_add_host_key(self, local_site_name=None):
+        """Testing sshutils.add_host_key"""
+        self._set_home(self.tempdir)
+        key = paramiko.RSAKey.generate(2048)
+        sshutils.add_host_key('example.com', key, local_site_name)
+
+        known_hosts_file = sshutils.get_host_keys_filename(local_site_name)
+        self.assertTrue(os.path.exists(known_hosts_file))
+
+        f = open(known_hosts_file, 'r')
+        lines = f.readlines()
+        f.close()
+
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0].split(),
+                         ['example.com', key.get_name(), key.get_base64()])
+
+    def test_add_host_key_with_localsite(self):
+        """Testing sshutils.add_host_key with localsite"""
+        self.test_add_host_key('site-1')
+
+    def test_replace_host_key(self, local_site_name=None):
+        """Testing sshutils.replace_host_key"""
+        self._set_home(self.tempdir)
+        key = paramiko.RSAKey.generate(2048)
+        sshutils.add_host_key('example.com', key, local_site_name)
+
+        new_key = paramiko.RSAKey.generate(2048)
+        sshutils.replace_host_key('example.com', key, new_key, local_site_name)
+
+        known_hosts_file = sshutils.get_host_keys_filename(local_site_name)
+        self.assertTrue(os.path.exists(known_hosts_file))
+
+        f = open(known_hosts_file, 'r')
+        lines = f.readlines()
+        f.close()
+
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0].split(),
+                         ['example.com', new_key.get_name(),
+                          new_key.get_base64()])
+
+    def test_replace_host_key_with_localsite(self):
+        """Testing sshutils.replace_host_key with localsite"""
+        self.test_replace_host_key('site-1')
+
+
+class BZRTests(SCMTestCase):
     """Unit tests for bzr."""
     fixtures = ['test_scmtools.json']
 
+    def setUp(self):
+        super(BZRTests, self).setUp()
+
+        self.bzr_repo_path = os.path.join(os.path.dirname(__file__),
+                                          'testdata', 'bzr_repo')
+        self.bzr_ssh_path = 'bzr+ssh://localhost/%s' % \
+                            self.bzr_repo_path.replace('\\', '/')
+        self.bzr_sftp_path = 'sftp://localhost/%s' % \
+                             self.bzr_repo_path.replace('\\', '/')
+        self.repository = Repository(name='Bazaar',
+                                     path='file://' + self.bzr_repo_path,
+                                     tool=Tool.objects.get(name='Bazaar'))
+
+        try:
+            self.tool = self.repository.get_scmtool()
+        except ImportError:
+            raise nose.SkipTest('bzrlib is not installed')
+
     def test_ssh(self):
         """Testing a SSH-backed bzr repository"""
-        repo_path, username, password = _get_repo_test_info('BZR_SSH')
-        BZRTool.check_repository(repo_path, username, password)
+        self._test_ssh(self.bzr_ssh_path, 'README')
+
+    def test_ssh_with_site(self):
+        """Testing a SSH-backed bzr repository with a LocalSite"""
+        self._test_ssh_with_site(self.bzr_ssh_path, 'README')
 
     def test_sftp(self):
         """Testing a SFTP-backed bzr repository"""
-        repo_path, username, password = _get_repo_test_info('BZR_SFTP')
-        BZRTool.check_repository(repo_path, username, password)
+        self._test_ssh(self.bzr_sftp_path, 'README')
 
 
-class CVSTests(DjangoTestCase):
+class CVSTests(SCMTestCase):
     """Unit tests for CVS."""
     fixtures = ['test_scmtools.json']
 
     def setUp(self):
+        super(CVSTests, self).setUp()
+
         self.cvs_repo_path = os.path.join(os.path.dirname(__file__),
                                           'testdata/cvs_repo')
+        self.cvs_ssh_path = ':ext:localhost:%s' % \
+                            self.cvs_repo_path.replace('\\', '/')
         self.repository = Repository(name='CVS',
                                      path=self.cvs_repo_path,
                                      tool=Tool.objects.get(name='CVS'))
@@ -88,7 +311,7 @@ class CVSTests(DjangoTestCase):
         tool = repo.get_scmtool()
 
         self.assertEqual(tool.repopath, "/cvsroot/test")
-        self.assertEqual(tool.client.repository,
+        self.assertEqual(tool.client.cvsroot,
                          ":pserver:anonymous@example.com:123/cvsroot/test")
 
     def testPathWithoutPort(self):
@@ -100,7 +323,7 @@ class CVSTests(DjangoTestCase):
         tool = repo.get_scmtool()
 
         self.assertEqual(tool.repopath, "/cvsroot/test")
-        self.assertEqual(tool.client.repository,
+        self.assertEqual(tool.client.cvsroot,
                          ":pserver:anonymous@example.com:/cvsroot/test")
 
     def testGetFile(self):
@@ -228,19 +451,26 @@ class CVSTests(DjangoTestCase):
 
     def test_ssh(self):
         """Testing a SSH-backed CVS repository"""
-        repo_path, username, password = _get_repo_test_info('CVS_SSH')
-        self.tool.check_repository(repo_path, username, password)
+        self._test_ssh(self.cvs_ssh_path, 'CVSROOT/modules')
+
+    def test_ssh_with_site(self):
+        """Testing a SSH-backed CVS repository with a LocalSite"""
+        self._test_ssh_with_site(self.cvs_ssh_path, 'CVSROOT/modules')
 
 
-class SubversionTests(DjangoTestCase):
+class SubversionTests(SCMTestCase):
     """Unit tests for subversion."""
     fixtures = ['test_scmtools.json']
 
     def setUp(self):
-        svn_repo_path = os.path.join(os.path.dirname(__file__),
-                                     'testdata/svn_repo')
+        super(SubversionTests, self).setUp()
+
+        self.svn_repo_path = os.path.join(os.path.dirname(__file__),
+                                          'testdata/svn_repo')
+        self.svn_ssh_path = 'svn+ssh://localhost/%s' % \
+                            self.svn_repo_path.replace('\\', '/')
         self.repository = Repository(name='Subversion SVN',
-                                     path='file://' + svn_repo_path,
+                                     path='file://' + self.svn_repo_path,
                                      tool=Tool.objects.get(name='Subversion'))
 
         try:
@@ -250,8 +480,12 @@ class SubversionTests(DjangoTestCase):
 
     def test_ssh(self):
         """Testing a SSH-backed Subversion repository"""
-        repo_path, username, password = _get_repo_test_info('SVN_SSH')
-        self.tool.check_repository(repo_path, username, password)
+        self._test_ssh(self.svn_ssh_path, 'trunk/doc/misc-docs/Makefile')
+
+    def test_ssh_with_site(self):
+        """Testing a SSH-backed Subversion repository with a LocalSite"""
+        self._test_ssh_with_site(self.svn_ssh_path,
+                                 'trunk/doc/misc-docs/Makefile')
 
     def testGetFile(self):
         """Testing SVNTool.get_file"""
@@ -368,7 +602,7 @@ class SubversionTests(DjangoTestCase):
         patch(diff, file, filename)
 
 
-class PerforceTests(DjangoTestCase):
+class PerforceTests(SCMTestCase):
     """Unit tests for perforce.
 
        This uses the open server at public.perforce.com to test various
@@ -378,6 +612,8 @@ class PerforceTests(DjangoTestCase):
     fixtures = ['test_scmtools.json']
 
     def setUp(self):
+        super(PerforceTests, self).setUp()
+
         self.repository = Repository(name='Perforce.com',
                                      path='public.perforce.com:1666',
                                      tool=Tool.objects.get(name='Perforce'))
@@ -399,7 +635,8 @@ class PerforceTests(DjangoTestCase):
             else:
                 raise
         self.assertEqual(desc.changenum, 157)
-        self.assertEqual(hash(desc.description), -7425743081915501647)
+        self.assertEqual(md5(desc.description).hexdigest(),
+                         'b7eff0ca252347cc9b09714d07397e64')
 
         expected_files = [
             '//public/perforce/api/python/P4Client/P4Clientmodule.cc',
@@ -412,7 +649,27 @@ class PerforceTests(DjangoTestCase):
         for file, expected in map(None, desc.files, expected_files):
             self.assertEqual(file, expected)
 
-        self.assertEqual(hash(desc.summary), 4980424973015496725)
+        self.assertEqual(md5(desc.summary).hexdigest(),
+                         '99a335676b0e5821ffb2f7469d4d7019')
+
+    def testChangesetBroken(self):
+        """Testing PerforceTool.get_changeset error conditions"""
+        repo = Repository(name='Perforce.com',
+                          path='public.perforce.com:1666',
+                          tool=Tool.objects.get(name='Perforce'),
+                          username='samwise',
+                          password='bogus')
+        tool = repo.get_scmtool()
+        self.assertRaises(AuthenticationError,
+                          lambda: tool.get_changeset(157))
+
+        repo = Repository(name='localhost:1',
+                          path='localhost:1',
+                          tool=Tool.objects.get(name='Perforce'))
+
+        tool = repo.get_scmtool()
+        self.assertRaises(RepositoryNotFoundError,
+                          lambda: tool.get_changeset(1))
 
     def testGetFile(self):
         """Testing PerforceTool.get_file"""
@@ -428,7 +685,8 @@ class PerforceTests(DjangoTestCase):
                     'Connection to public.perforce.com failed.  No internet?')
             else:
                 raise
-        self.assertEqual(hash(file), -6079245147730624701)
+        self.assertEqual(md5(file).hexdigest(),
+                         '227bdd87b052fcad9369e65c7bf23fd0')
 
     def testEmptyDiff(self):
         """Testing Perforce empty diff parsing"""
@@ -439,7 +697,8 @@ class PerforceTests(DjangoTestCase):
         self.assertEqual(file.origInfo, '//depot/foo/proj/README#2')
         self.assertEqual(file.newFile, '/src/proj/README')
         self.assertEqual(file.newInfo, '')
-        self.assertEqual(file.binary, False)
+        self.assertFalse(file.binary)
+        self.assertFalse(file.deleted)
         self.assertEqual(file.data, '')
 
     def testBinaryDiff(self):
@@ -453,7 +712,22 @@ class PerforceTests(DjangoTestCase):
         self.assertEqual(file.newFile, '/src/proj/test.png')
         self.assertEqual(file.newInfo, '')
         self.assertEqual(file.data, '')
-        self.assertEqual(file.binary, True)
+        self.assertTrue(file.binary)
+        self.assertFalse(file.deleted)
+
+    def testDeletedDiff(self):
+        """Testing Perforce deleted diff parsing"""
+        diff = "==== //depot/foo/proj/test.png#1 ==D== /src/proj/test.png " + \
+               "====\n"
+
+        file = self.tool.get_parser(diff).parse()[0]
+        self.assertEqual(file.origFile, '//depot/foo/proj/test.png')
+        self.assertEqual(file.origInfo, '//depot/foo/proj/test.png#1')
+        self.assertEqual(file.newFile, '/src/proj/test.png')
+        self.assertEqual(file.newInfo, '')
+        self.assertEqual(file.data, '')
+        self.assertFalse(file.binary)
+        self.assertTrue(file.deleted)
 
     def testEmptyAndNormalDiffs(self):
         """Testing Perforce empty and normal diff parsing"""
@@ -473,22 +747,108 @@ class PerforceTests(DjangoTestCase):
         self.assertEqual(files[0].origInfo, '//depot/foo/proj/test.png#1')
         self.assertEqual(files[0].newFile, '/src/proj/test.png')
         self.assertEqual(files[0].newInfo, '')
-        self.assertEqual(files[0].binary, False)
+        self.assertFalse(files[0].binary)
+        self.assertFalse(files[0].deleted)
         self.assertEqual(files[0].data, '')
 
         self.assertEqual(files[1].origFile, 'test.c')
         self.assertEqual(files[1].origInfo, '//depot/foo/proj/test.c#2')
         self.assertEqual(files[1].newFile, 'test.c')
         self.assertEqual(files[1].newInfo, '01-02-03 04:05:06')
-        self.assertEqual(files[1].binary, False)
+        self.assertFalse(files[1].binary)
+        self.assertFalse(files[1].deleted)
         self.assertEqual(files[1].data, diff2_text)
 
 
-class VMWareTests(DjangoTestCase):
+class PerforceStunnelTests(SCMTestCase):
+    """
+    Unit tests for perforce running through stunnel.
+
+    Out of the box, Perforce doesn't support any kind of encryption on its
+    connections. The recommended setup in this case is to run an stunnel server
+    on the perforce server which bounces SSL connections to the normal p4 port.
+    One can then start an stunnel on their client machine and connect via a
+    localhost: P4PORT.
+
+    For these tests, we set up an stunnel server which will accept secure
+    connections and proxy (insecurely) to the public perforce server. We can
+    then tell the Perforce SCMTool to connect securely to localhost.
+    """
+    fixtures = ['test_scmtools.json']
+
+    def setUp(self):
+        super(PerforceStunnelTests, self).setUp()
+
+        if not is_exe_in_path('stunnel'):
+            raise nose.SkipTest('stunnel is not installed')
+
+        cert = os.path.join(os.path.dirname(__file__),
+                            'testdata', 'stunnel.pem')
+        self.proxy = STunnelProxy(STUNNEL_SERVER, 'public.perforce.com:1666')
+        self.proxy.start_server(cert)
+
+        # Find an available port to listen on
+        path = 'stunnel:localhost:%d' % self.proxy.port
+
+        self.repository = Repository(name='Perforce.com - secure',
+                                     path=path,
+                                     tool=Tool.objects.get(name='Perforce'))
+        try:
+            self.tool = self.repository.get_scmtool()
+            self.tool.use_stunnel = True
+        except ImportError:
+            raise nose.SkipTest('perforce/p4python is not installed')
+
+
+    def tearDown(self):
+        self.proxy.shutdown()
+
+    def testChangeset(self):
+        """Testing PerforceTool.get_changeset with stunnel"""
+        desc = self.tool.get_changeset(157)
+
+        self.assertEqual(desc.changenum, 157)
+        self.assertEqual(md5(desc.description).hexdigest(),
+                         'b7eff0ca252347cc9b09714d07397e64')
+
+        expected_files = [
+            '//public/perforce/api/python/P4Client/P4Clientmodule.cc',
+            '//public/perforce/api/python/P4Client/p4.py',
+            '//public/perforce/api/python/P4Client/review.py',
+            '//public/perforce/python/P4Client/P4Clientmodule.cc',
+            '//public/perforce/python/P4Client/p4.py',
+            '//public/perforce/python/P4Client/review.py',
+        ]
+        for file, expected in map(None, desc.files, expected_files):
+            self.assertEqual(file, expected)
+
+        self.assertEqual(md5(desc.summary).hexdigest(),
+                         '99a335676b0e5821ffb2f7469d4d7019')
+
+    def testGetFile(self):
+        """Testing PerforceTool.get_file with stunnel"""
+        file = self.tool.get_file('//depot/foo', PRE_CREATION)
+        self.assertEqual(file, '')
+
+        try:
+            file = self.tool.get_file('//public/perforce/api/python/P4Client/p4.py', 1)
+        except Exception, e:
+            if str(e).startswith('Connect to server failed'):
+                raise nose.SkipTest(
+                    'Connection to public.perforce.com failed.  No internet?')
+            else:
+                raise
+        self.assertEqual(md5(file).hexdigest(),
+                         '227bdd87b052fcad9369e65c7bf23fd0')
+
+
+class VMWareTests(SCMTestCase):
     """Tests for VMware specific code"""
     fixtures = ['vmware.json', 'test_scmtools.json']
 
     def setUp(self):
+        super(VMWareTests, self).setUp()
+
         self.repository = Repository(name='VMware Test',
                                      path='perforce.eng.vmware.com:1666',
                                      tool=Tool.objects.get(name='VMware Perforce'))
@@ -565,11 +925,13 @@ class VMWareTests(DjangoTestCase):
 #        self.assertEqual(changeset.branch, 'bfg-main')
 
 
-class MercurialTests(DjangoTestCase):
+class MercurialTests(SCMTestCase):
     """Unit tests for mercurial."""
-    fixtures = ['hg.json', 'test_scmtools.json']
+    fixtures = ['test_scmtools.json']
 
     def setUp(self):
+        super(MercurialTests, self).setUp()
+
         hg_repo_path = os.path.join(os.path.dirname(__file__),
                                     'testdata/hg_repo.bundle')
         self.repository = Repository(name='Test HG',
@@ -690,22 +1052,26 @@ class MercurialTests(DjangoTestCase):
                          ['diff_path', 'parent_diff_path'])
 
 
-class GitTests(DjangoTestCase):
+class GitTests(SCMTestCase):
     """Unit tests for Git."""
     fixtures = ['test_scmtools.json']
 
     def setUp(self):
+        super(GitTests, self).setUp()
+
         tool = Tool.objects.get(name='Git')
 
-        local_repo_path = os.path.join(os.path.dirname(__file__),
-                                       'testdata', 'git_repo')
+        self.local_repo_path = os.path.join(os.path.dirname(__file__),
+                                           'testdata', 'git_repo')
+        self.git_ssh_path = 'localhost:%s' % \
+                            self.local_repo_path.replace('\\', '/')
         remote_repo_path = 'git@github.com:reviewboard/reviewboard.git'
         remote_repo_raw_url = 'http://github.com/api/v2/yaml/blob/show/' \
                               'reviewboard/reviewboard/<revision>'
 
 
         self.repository = Repository(name='Git test repo',
-                                     path=local_repo_path,
+                                     path=self.local_repo_path,
                                      tool=tool)
         self.remote_repository = Repository(name='Remote Git test repo',
                                             path=remote_repo_path,
@@ -720,7 +1086,7 @@ class GitTests(DjangoTestCase):
 
     def _readFixture(self, filename):
         return open( \
-            os.path.join(os.path.dirname(__file__), 'testdata/%s' % filename), \
+            os.path.join(os.path.dirname(__file__), 'testdata', filename), \
             'r').read()
 
     def _getFileInDiff(self, diff, filenum=0):
@@ -728,8 +1094,11 @@ class GitTests(DjangoTestCase):
 
     def test_ssh(self):
         """Testing a SSH-backed git repository"""
-        repo_path, username, password = _get_repo_test_info('GIT_SSH')
-        self.tool.check_repository(repo_path, username, password)
+        self._test_ssh(self.git_ssh_path)
+
+    def test_ssh_with_site(self):
+        """Testing a SSH-backed git repository with a LocalSite"""
+        self._test_ssh_with_site(self.git_ssh_path)
 
     def testFilemodeDiff(self):
         """Testing parsing filemode changes Git diff"""
@@ -740,6 +1109,7 @@ class GitTests(DjangoTestCase):
         self.assertEqual(file.origInfo, 'e69de29')
         self.assertEqual(file.newInfo, 'bcae657')
         self.assertFalse(file.binary)
+        self.assertFalse(file.deleted)
         self.assertEqual(file.data.splitlines()[0],
                          "diff --git a/testing b/testing")
         self.assertEqual(file.data.splitlines()[-1], "+ADD")
@@ -753,6 +1123,7 @@ class GitTests(DjangoTestCase):
         self.assertEqual(file.origInfo, 'e69de29')
         self.assertEqual(file.newInfo, 'bcae657')
         self.assertFalse(file.binary)
+        self.assertFalse(file.deleted)
         self.assertEqual(file.data.splitlines()[0],
                          "diff --git a/testing b/testing")
         self.assertEqual(file.data.splitlines()[-1], "+ADD")
@@ -774,7 +1145,8 @@ class GitTests(DjangoTestCase):
         self.assertEqual(file.origInfo, 'cc18ec8')
         self.assertEqual(file.newInfo, '5e70b73')
         self.assertFalse(file.binary)
-        self.assertEqual(len(file.data), 219)
+        self.assertFalse(file.deleted)
+        self.assertEqual(len(file.data), 249)
         self.assertEqual(file.data.splitlines()[0],
                          "diff --git a/cfg/testcase.ini b/cfg/testcase.ini")
         self.assertEqual(file.data.splitlines()[-1], "+db = pyunit")
@@ -788,7 +1160,8 @@ class GitTests(DjangoTestCase):
         self.assertEqual(file.origInfo, PRE_CREATION)
         self.assertEqual(file.newInfo, 'e69de29')
         self.assertFalse(file.binary)
-        self.assertEqual(len(file.data), 80)
+        self.assertFalse(file.deleted)
+        self.assertEqual(len(file.data), 124)
         self.assertEqual(file.data.splitlines()[0],
                          "diff --git a/IAMNEW b/IAMNEW")
         self.assertEqual(file.data.splitlines()[-1], "+Hello")
@@ -821,7 +1194,8 @@ class GitTests(DjangoTestCase):
         self.assertEqual(file.origInfo, '8ebcb01')
         self.assertEqual(file.newInfo, '0000000')
         self.assertFalse(file.binary)
-        self.assertEqual(len(file.data), 84)
+        self.assertTrue(file.deleted)
+        self.assertEqual(len(file.data), 132)
         self.assertEqual(file.data.splitlines()[0],
                          "diff --git a/OLDFILE b/OLDFILE")
         self.assertEqual(file.data.splitlines()[-1], "-Goodbye")
@@ -835,7 +1209,8 @@ class GitTests(DjangoTestCase):
         self.assertEqual(file.origInfo, PRE_CREATION)
         self.assertEqual(file.newInfo, '86b520c')
         self.assertTrue(file.binary)
-        self.assertEqual(len(file.data), 53)
+        self.assertFalse(file.deleted)
+        self.assertEqual(len(file.data), 97)
         self.assertEqual(file.data.splitlines()[0],
                          "diff --git a/pysvn-1.5.1.tar.gz b/pysvn-1.5.1.tar.gz")
 
@@ -849,10 +1224,11 @@ class GitTests(DjangoTestCase):
         self.assertEqual(files[0].origInfo, '5e35098')
         self.assertEqual(files[0].newInfo, 'e254ef4')
         self.assertFalse(files[0].binary)
-        self.assertEqual(len(files[0].data), 519)
+        self.assertFalse(files[0].deleted)
+        self.assertEqual(len(files[0].data), 549)
         self.assertEqual(files[0].data.splitlines()[0],
                          "diff --git a/cfg/testcase.ini b/cfg/testcase.ini")
-        self.assertEqual(files[0].data.splitlines()[12],
+        self.assertEqual(files[0].data.splitlines()[13],
                          "         if isinstance(value, basestring):")
 
         self.assertEqual(files[1].origFile, 'tests/tests.py')
@@ -860,7 +1236,8 @@ class GitTests(DjangoTestCase):
         self.assertEqual(files[1].origInfo, PRE_CREATION)
         self.assertEqual(files[1].newInfo, 'e279a06')
         self.assertFalse(files[1].binary)
-        self.assertEqual(len(files[1].data), 138)
+        self.assertFalse(files[1].deleted)
+        self.assertEqual(len(files[1].data), 182)
         self.assertEqual(files[1].data.splitlines()[0],
                          "diff --git a/tests/tests.py b/tests/tests.py")
         self.assertEqual(files[1].data.splitlines()[-1],
@@ -871,7 +1248,8 @@ class GitTests(DjangoTestCase):
         self.assertEqual(files[2].origInfo, PRE_CREATION)
         self.assertEqual(files[2].newInfo, '86b520c')
         self.assertTrue(files[2].binary)
-        self.assertEqual(len(files[2].data), 53)
+        self.assertFalse(files[2].deleted)
+        self.assertEqual(len(files[2].data), 97)
         self.assertEqual(files[2].data.splitlines()[0],
                          "diff --git a/pysvn-1.5.1.tar.gz b/pysvn-1.5.1.tar.gz")
 
@@ -880,7 +1258,8 @@ class GitTests(DjangoTestCase):
         self.assertEqual(files[3].origInfo, '5e35098')
         self.assertEqual(files[3].newInfo, 'e254ef4')
         self.assertFalse(files[3].binary)
-        self.assertEqual(len(files[3].data), 97)
+        self.assertFalse(files[3].deleted)
+        self.assertEqual(len(files[3].data), 127)
         self.assertEqual(files[3].data.splitlines()[0],
                          "diff --git a/readme b/readme")
         self.assertEqual(files[3].data.splitlines()[-1],
@@ -891,7 +1270,8 @@ class GitTests(DjangoTestCase):
         self.assertEqual(files[4].origInfo, '8ebcb01')
         self.assertEqual(files[4].newInfo, '0000000')
         self.assertFalse(files[4].binary)
-        self.assertEqual(len(files[4].data), 84)
+        self.assertTrue(files[4].deleted)
+        self.assertEqual(len(files[4].data), 132)
         self.assertEqual(files[4].data.splitlines()[0],
                          "diff --git a/OLDFILE b/OLDFILE")
         self.assertEqual(files[4].data.splitlines()[-1],
@@ -902,7 +1282,8 @@ class GitTests(DjangoTestCase):
         self.assertEqual(files[5].origInfo, '5e43098')
         self.assertEqual(files[5].newInfo, 'e248ef4')
         self.assertFalse(files[5].binary)
-        self.assertEqual(len(files[5].data), 101)
+        self.assertFalse(files[5].deleted)
+        self.assertEqual(len(files[5].data), 131)
         self.assertEqual(files[5].data.splitlines()[0],
                          "diff --git a/readme2 b/readme2")
         self.assertEqual(files[5].data.splitlines()[-1],
@@ -961,3 +1342,118 @@ class GitTests(DjangoTestCase):
         self.assertRaises(
             ShortSHA1Error,
             lambda: self.remote_tool.get_file('README', 'd7e96b3'))
+
+
+class PolicyTests(DjangoTestCase):
+    fixtures = ['test_scmtools']
+
+    def setUp(self):
+        self.user = User.objects.create(username='testuser', password='')
+        self.anonymous = AnonymousUser()
+        self.repo = Repository.objects.create(
+            name="test",
+            path="example.com:/cvsroot/test",
+            username="anonymous",
+            tool=Tool.objects.get(name="CVS"))
+
+    def test_repository_public(self):
+        """Testing access to a public repository"""
+        self.assertTrue(self.repo.is_accessible_by(self.user))
+        self.assertTrue(self.repo.is_accessible_by(self.anonymous))
+
+        self.assertTrue(self.repo in Repository.objects.accessible(self.user))
+        self.assertTrue(
+            self.repo in Repository.objects.accessible(self.anonymous))
+
+    def test_repository_private_access_denied(self):
+        """Testing no access to an inaccessible private repository"""
+        self.repo.public = False
+        self.repo.save()
+
+        self.assertFalse(self.repo.is_accessible_by(self.user))
+        self.assertFalse(self.repo.is_accessible_by(self.anonymous))
+
+        self.assertFalse(self.repo in Repository.objects.accessible(self.user))
+        self.assertFalse(
+            self.repo in Repository.objects.accessible(self.anonymous))
+
+    def test_repository_private_access_allowed_by_user(self):
+        """Testing access to a private repository accessible by user"""
+        self.repo.users.add(self.user)
+        self.repo.public = False
+        self.repo.save()
+
+        self.assertTrue(self.repo.is_accessible_by(self.user))
+        self.assertFalse(self.repo.is_accessible_by(self.anonymous))
+
+        self.assertTrue(self.repo in Repository.objects.accessible(self.user))
+        self.assertFalse(
+            self.repo in Repository.objects.accessible(self.anonymous))
+
+    def test_repository_private_access_allowed_by_review_group(self):
+        """Testing access to a private repository accessible by review group"""
+        group = Group.objects.create(name='test-group')
+        group.users.add(self.user)
+
+        self.repo.public = False
+        self.repo.review_groups.add(group)
+        self.repo.save()
+
+        self.assertTrue(self.repo.is_accessible_by(self.user))
+        self.assertFalse(self.repo.is_accessible_by(self.anonymous))
+
+        self.assertTrue(self.repo in Repository.objects.accessible(self.user))
+        self.assertFalse(
+            self.repo in Repository.objects.accessible(self.anonymous))
+
+    def test_repository_form_with_local_site_and_bad_group(self):
+        """Testing adding a Group to a RepositoryForm with the wrong LocalSite."""
+        test_site = LocalSite.objects.create(name='test')
+        tool = Tool.objects.get(name='Subversion')
+        group = Group.objects.create(name='test-group')
+
+        svn_repo_path = 'file://' + os.path.join(os.path.dirname(__file__),
+                                                 'testdata/svn_repo')
+
+        form = RepositoryForm({
+            'name': 'test',
+            'path': svn_repo_path,
+            'hosting_type': 'custom',
+            'bug_tracker_type': 'custom',
+            'review_groups': [group.pk],
+            'local_site': test_site.pk,
+            'tool': tool.pk,
+        })
+        self.assertFalse(form.is_valid())
+
+        group.local_site = test_site
+        group.save()
+
+        form = RepositoryForm({
+            'name': 'test',
+            'path': svn_repo_path,
+            'hosting_type': 'custom',
+            'bug_tracker_type': 'custom',
+            'review_groups': [group.pk],
+            'tool': tool.pk,
+        })
+        self.assertFalse(form.is_valid())
+
+    def test_repository_form_with_local_site_and_bad_user(self):
+        """Testing adding a User to a RepositoryForm with the wrong LocalSite."""
+        test_site = LocalSite.objects.create(name='test')
+        tool = Tool.objects.get(name='Subversion')
+
+        svn_repo_path = 'file://' + os.path.join(os.path.dirname(__file__),
+                                                 'testdata/svn_repo')
+
+        form = RepositoryForm({
+            'name': 'test',
+            'path': svn_repo_path,
+            'hosting_type': 'custom',
+            'bug_tracker_type': 'custom',
+            'users': [self.user.pk],
+            'local_site': test_site.pk,
+            'tool': tool.pk,
+        })
+        self.assertFalse(form.is_valid())

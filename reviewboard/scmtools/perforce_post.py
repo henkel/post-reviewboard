@@ -13,11 +13,13 @@ from reviewboard.diffviewer.diffutils import convert_line_endings
 
 from tempfile import mkstemp, mkdtemp
 
-from reviewboard.scmtools.perforce import PerforceTool
+from reviewboard.scmtools.perforce import PerforceTool, PerforceClient
 from reviewboard.scmtools.errors import SCMError
 
 from django.core.cache import cache
 from django.utils import encoding
+
+        
 
 class PerforcePostCommitTool(PerforceTool):
     name = "Perforce Post Commit" 
@@ -25,6 +27,15 @@ class PerforcePostCommitTool(PerforceTool):
     
     def __init__(self, repository):
         PerforceTool.__init__(self, repository)
+              
+    @staticmethod
+    def _create_client(path, username, password):
+        if path.startswith('stunnel:'):
+            path = path[8:]
+            use_stunnel = True
+        else:
+            use_stunnel = False
+        return PerforcePostCommitClient(path, username, password, use_stunnel)
         
     def get_fields(self):
         fields = PerforceTool.get_fields(self)
@@ -34,31 +45,8 @@ class PerforcePostCommitTool(PerforceTool):
     def get_diff_file(self, change_numbers):
         if change_numbers == None or len(change_numbers) == 0:
             raise SCMError('List of changelist numbers is empty')
-        diff_tool = PerforceDiffTool(self)
-        return diff_tool.get_diff_file(change_numbers)
+        return self.client.get_diff_file(change_numbers)
     
-    def get_changedesc(self, change_number):
-        cache_key = 'perforce_post_get_changedesc.'+ urllib.quote(str(self.repository.path)) +'.'+ str(change_number)
-        res = cache.get(cache_key)
-        if res != None:
-            return res
-
-        try:
-            changedesc = self.p4.run_describe('-S', change_number)
-        except Exception, e:
-            raise SCMError('Perforce error: ' + str(e))
-        
-        if len(changedesc) == 0:
-            raise SCMError('Change '+str(change_number)+ ' not found')
-
-        changedesc = changedesc[0]
-        
-        changedesc['desc'] = encoding.smart_str(changedesc['desc'], encoding='ascii', errors='ignore')
-        
-        if changedesc['status'] != 'pending':
-            cache.set(cache_key, changedesc, 60*60*24*7)
-
-        return changedesc
 
         
 # TODO refactor DiffStatus from perforce_post and svn_post into another file, e.g. PostCommitUtils  
@@ -174,19 +162,46 @@ def execute(command, env=None, split_lines=False, ignore_errors=False,
 
 
 
-class PerforceDiffTool:
-    def __init__(self, perforce_tool):
-        self.tool = perforce_tool
+class PerforcePostCommitClient(PerforceClient):
+    def __init__(self, p4port, username, password, use_stunnel=False):
+        PerforceClient.__init__(self, p4port, username, password, use_stunnel)
         
+    def get_diff_file(self, change_numbers):
+        """
+        Returns a unified diff file based on the change_numbers.
+        """
+        return self._run_worker(lambda: self._get_diff_file(change_numbers))
+    
+    
+    def _get_change_description(self, change_number):
+        cache_key = 'perforce_post_get_changedesc.'+ urllib.quote(str(self.p4port)) +'.'+ str(change_number)
+        res = cache.get(cache_key)
+        if res != None:
+            return res
 
-    # Creates a diff file based on a Perforce change number list
-    def get_diff_file(self, changelist_numbers):
         try:
-            self.tool._connect()
-            
+            changedesc = self.p4.run_describe('-S', change_number)
+        except Exception, e:
+            raise SCMError('Perforce error: ' + str(e))
+        
+        if len(changedesc) == 0:
+            raise SCMError('Change '+str(change_number)+ ' not found')
+
+        changedesc = changedesc[0]
+        
+        changedesc['desc'] = encoding.smart_str(changedesc['desc'], encoding='ascii', errors='ignore')
+        
+        if changedesc['status'] != 'pending':
+            cache.set(cache_key, changedesc, 60*60*24*7)
+
+        return changedesc
+        
+    # Creates a diff file based on a Perforce change number list
+    def _get_diff_file(self, changelist_numbers):
+        try:            
             changelist_numbers.sort()
 
-            changelists = [self.tool.get_changedesc(changelist_number) for changelist_number in changelist_numbers]
+            changelists = [self._get_change_description(changelist_number) for changelist_number in changelist_numbers]
             
             # Only allow one shelved changelist
             is_shelved = reduce(lambda shelved,cl: shelved or cl['status'] == 'pending', changelists, False)
@@ -204,7 +219,7 @@ class PerforceDiffTool:
             modified_files = { }
             description = ''
             for changelist in changelists:
-                description += self.merge_changelist_into_list_of_modified_files(changelist, modified_files)
+                description += self._merge_changelist_into_list_of_modified_files(changelist, modified_files)
             
             if len(modified_files) == 0:
                 raise SCMError('There are no files attached to the changelist(s)')
@@ -223,7 +238,6 @@ class PerforceDiffTool:
                 os.unlink(tmp_diff_from_filename)
                 os.unlink(tmp_diff_to_filename)
                 os.rmdir(temp_dir_name)
-                self.tool._disconnect()
             
             try:
                 cwd = os.getcwd()
@@ -248,7 +262,7 @@ class PerforceDiffTool:
             raise SCMError('Error creating diff: ' + str(e) )
 
 
-    def merge_changelist_into_list_of_modified_files(self, changedesc, modified_files):
+    def _merge_changelist_into_list_of_modified_files(self, changedesc, modified_files):
         shelved = 'shelved' in changedesc
         
         if changedesc['status'] == 'pending' and not shelved:
@@ -397,7 +411,7 @@ class PerforceDiffTool:
         rather than telling p4 print to write it out in order to work around
         a permissions bug on Windows.
         """
-        data = self.tool.get_file(path, revision, from_shelved_changelist)
+        data = self._get_file(path, revision, from_shelved_changelist)
         f = open(tmpfile, "w")
         
         # Fix line endings

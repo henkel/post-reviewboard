@@ -28,6 +28,9 @@ LANGUAGE_CODE = 'en-us'
 # figure out URLs to stick in e-mails and related pages.
 SITE_ID = 1
 
+# The prefix for e-mail subjects sent to administrators.
+EMAIL_SUBJECT_PREFIX = "[Review Board] "
+
 # If you set this to False, Django will make some optimizations so as not
 # to load the internationalization machinery.
 USE_I18N = False
@@ -37,9 +40,8 @@ LANGUAGES = (
 
 # List of callables that know how to import templates from various sources.
 TEMPLATE_LOADERS = (
-    'django.template.loaders.filesystem.load_template_source',
-    'django.template.loaders.app_directories.load_template_source',
-#     'django.template.loaders.eggs.load_template_source',
+    'django.template.loaders.filesystem.Loader',
+    'django.template.loaders.app_directories.Loader',
 )
 
 MIDDLEWARE_CLASSES = (
@@ -58,10 +60,11 @@ MIDDLEWARE_CLASSES = (
     'djblets.log.middleware.LoggingMiddleware',
     'reviewboard.admin.middleware.CheckUpdatesRequiredMiddleware',
     'reviewboard.admin.middleware.X509AuthMiddleware',
+    'reviewboard.site.middleware.LocalSiteMiddleware',
 )
 
 TEMPLATE_CONTEXT_PROCESSORS = (
-    'django.core.context_processors.auth',
+    'django.contrib.auth.context_processors.auth',
     'django.core.context_processors.debug',
     'django.core.context_processors.i18n',
     'django.core.context_processors.media',
@@ -71,7 +74,9 @@ TEMPLATE_CONTEXT_PROCESSORS = (
     'djblets.util.context_processors.siteRoot',
     'djblets.util.context_processors.ajaxSerial',
     'djblets.util.context_processors.mediaSerial',
+    'reviewboard.accounts.context_processors.auth_backends',
     'reviewboard.admin.context_processors.version',
+    'reviewboard.site.context_processors.localsite',
 )
 
 SITE_ROOT_URLCONF = 'reviewboard.urls'
@@ -96,19 +101,21 @@ INSTALLED_APPS = (
     'django.contrib.sessions',
     'djblets.datagrid',
     'djblets.feedview',
+    'djblets.gravatars',
     'djblets.log',
     'djblets.siteconfig',
     'djblets.util',
     'djblets.webapi',
     'reviewboard.accounts',
     'reviewboard.admin',
+    'reviewboard.attachments',
     'reviewboard.changedescs',
     'reviewboard.diffviewer',
-    'reviewboard.iphone',
     'reviewboard.notifications',
     'reviewboard.reports',
     'reviewboard.reviews',
     'reviewboard.scmtools',
+    'reviewboard.site',
     'reviewboard.webapi',
     'django_evolution', # Must be last
 )
@@ -128,7 +135,7 @@ CACHE_EXPIRATION_TIME = 60 * 60 * 24 * 30 # 1 month
 # Custom test runner, which uses nose to find tests and execute them.  This
 # gives us a somewhat more comprehensive test execution than django's built-in
 # runner, as well as some special features like a code coverage report.
-TEST_RUNNER = 'reviewboard.test.runner'
+TEST_RUNNER = 'reviewboard.test.RBTestRunner'
 
 # Dependency checker functionality.  Gives our users nice errors when they start
 # out, instead of encountering them later on.  Most of the magic for this
@@ -152,8 +159,8 @@ LOCAL_ROOT = None
 try:
     import settings_local
     from settings_local import *
-except ImportError:
-    dependency_error('Unable to read settings_local.py.')
+except ImportError, exc:
+    dependency_error('Unable to import settings_local.py: %s' % exc)
 
 TEMPLATE_DEBUG = DEBUG
 
@@ -193,4 +200,6 @@ SESSION_COOKIE_PATH = SITE_ROOT
 MEDIA_SERIAL_DIRS = ["admin", "djblets", "rb"]
 
 EMAIL_TAG = '[RB] '
+
+TEST_PACKAGES = ['reviewboard']
 

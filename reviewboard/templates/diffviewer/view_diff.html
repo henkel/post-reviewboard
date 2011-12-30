@@ -8,6 +8,7 @@
 {% block title %}{{review_request_details.summary}} | {% trans "Diff Viewer" %}{% endblock %}
 
 {% block jsconsts %}
+{{block.super}}
 {% include "reviews/review_flags.js" %}
   var gRevision = '{{diffset.revision}}';
 {% if interdiffset %}
@@ -29,10 +30,6 @@
 {% endblock %}
 
 {% block scripts-post %}
-<script type="text/javascript" src="{{MEDIA_URL}}djblets/js/jquery-ui-1.6rc5.min.js"></script>
-<script type="text/javascript" src="{{MEDIA_URL}}djblets/js/jquery.gravy.js?{{MEDIA_SERIAL}}"></script>
-<script type="text/javascript" src="{{MEDIA_URL}}rb/js/ui.autocomplete.min.js?{{MEDIA_SERIAL}}"></script>
-<script type="text/javascript" src="{{MEDIA_URL}}rb/js/common.js?{{MEDIA_SERIAL}}"></script>
 <script type="text/javascript" src="{{MEDIA_URL}}rb/js/diffviewer.js?{{MEDIA_SERIAL}}"></script>
 <script type="text/javascript" src="{{MEDIA_URL}}rb/js/reviews.js?{{MEDIA_SERIAL}}"></script>
 <script type="text/javascript" src="{{MEDIA_URL}}rb/js/jquery.form.js?{{MEDIA_SERIAL}}"></script>
@@ -59,7 +56,7 @@
 {% include "reviews/review_header.html" %}
 
 {% box "review-request" %}
-<ul id="actions">
+<ul class="actions">
 {% include "reviews/review_request_actions_secondary.html" %}
 {% if not interdiffset %}
  <li class="primary"><a href="raw/">{% trans "Download Diff" %}</a></li>
@@ -227,7 +224,7 @@
 {%  endif %}
 <script type="text/javascript">
   $(document).ready(function() {
-  loadFileDiff("{{file.filediff.id}}", "{{file.filediff.diffset.revision}}",
+  loadFileDiff("{{base_url}}", "{{file.filediff.id}}", "{{file.filediff.diffset.revision}}",
 {% if file.interfilediff %}
                "{{file.interfilediff.id}}", "{{file.interfilediff.diffset.revision}}",
 {% else %}
@@ -242,8 +239,6 @@
 <a name="index_footer"></a>
 {% include "diffviewer/changeindex.html" %}
 </div>
-
-{% include "reviews/comments_dlg.html" %}
 
 {% endif %}{# !error #}
 {% endblock %}

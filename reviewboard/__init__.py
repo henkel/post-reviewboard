@@ -4,7 +4,7 @@
 #
 #   (Major, Minor, Micro, Patch, alpha/beta/rc/final, Release Number, Released)
 #
-VERSION = (1, 5, 7, 0, 'final', 0, True)
+VERSION = (1, 6, 3, 0, 'final', 0, True)
 
 
 def get_version_string():
@@ -58,16 +58,22 @@ def initialize():
     import logging
     import os
 
+    from django.conf import settings
     from djblets.util.misc import generate_cache_serials
     from djblets import log
 
     from reviewboard import signals
 
+    # This overrides a default django templatetag (url), and we want to make
+    # sure it will always get loaded in every python instance.
+    import reviewboard.site.templatetags
+
 
     # Set up logging.
     log.init_logging()
-    logging.info("Log file for Review Board v%s (PID %s)" %
-                 (get_version_string(), os.getpid()))
+    if settings.DEBUG:
+        logging.debug("Log file for Review Board v%s (PID %s)" %
+                      (get_version_string(), os.getpid()))
 
     # Generate cache serials
     generate_cache_serials()

@@ -32,7 +32,7 @@
 
 import os.path
 
-from django.conf import settings
+from django.conf import settings, global_settings
 from django.core.exceptions import ImproperlyConfigured
 from djblets.log import siteconfig as log_siteconfig
 from djblets.siteconfig.django_settings import apply_django_settings, \
@@ -40,19 +40,9 @@ from djblets.siteconfig.django_settings import apply_django_settings, \
                                                get_django_settings_map
 from djblets.siteconfig.models import SiteConfiguration
 
+from reviewboard.accounts.backends import get_registered_auth_backends
 from reviewboard.admin.checks import get_can_enable_search, \
                                      get_can_enable_syntax_highlighting
-
-
-# A mapping of our supported authentication backend names to backend class
-# paths.
-auth_backend_map = {
-    'builtin': 'django.contrib.auth.backends.ModelBackend',
-    'nis':     'reviewboard.accounts.backends.NISBackend',
-    'ldap':    'reviewboard.accounts.backends.LDAPBackend',
-    'x509':    'reviewboard.accounts.backends.X509Backend',
-    'ad':      'reviewboard.accounts.backends.ActiveDirectoryBackend',
-}
 
 
 # A mapping of our supported storage backend names to backend class paths.
@@ -65,27 +55,30 @@ storage_backend_map = {
 # A mapping of siteconfig setting names to Django settings.py names.
 # This also contains all the djblets-provided mappings as well.
 settings_map = {
-    'auth_ldap_anon_bind_uid':    'LDAP_ANON_BIND_UID',
-    'auth_ldap_anon_bind_passwd': 'LDAP_ANON_BIND_PASSWD',
-    'auth_ldap_email_domain':     'LDAP_EMAIL_DOMAIN',
-    'auth_ldap_email_attribute':  'LDAP_EMAIL_ATTRIBUTE',
-    'auth_ldap_tls':              'LDAP_TLS',
-    'auth_ldap_base_dn':          'LDAP_BASE_DN',
-    'auth_ldap_uid_mask':         'LDAP_UID_MASK',
-    'auth_ldap_uri':              'LDAP_URI',
-    'auth_ad_domain_name':        'AD_DOMAIN_NAME',
-    'auth_ad_use_tls':            'AD_USE_TLS',
-    'auth_ad_find_dc_from_dns':   'AD_FIND_DC_FROM_DNS',
-    'auth_ad_domain_controller':  'AD_DOMAIN_CONTROLLER',
-    'auth_ad_ou_name':            'AD_OU_NAME',
-    'auth_ad_group_name':         'AD_GROUP_NAME',
-    'auth_ad_search_root':        'AD_SEARCH_ROOT',
-    'auth_ad_recursion_depth':    'AD_RECURSION_DEPTH',
-    'auth_x509_username_field':   'X509_USERNAME_FIELD',
-    'auth_x509_username_regex':   'X509_USERNAME_REGEX',
-    'auth_x509_autocreate_users': 'X509_AUTOCREATE_USERS',
-    'auth_nis_email_domain':      'NIS_EMAIL_DOMAIN',
-    'site_domain_method':         'DOMAIN_METHOD',
+    'auth_ldap_anon_bind_uid':        'LDAP_ANON_BIND_UID',
+    'auth_ldap_anon_bind_passwd':     'LDAP_ANON_BIND_PASSWD',
+    'auth_ldap_given_name_attribute': 'LDAP_GIVEN_NAME_ATTRIBUTE',
+    'auth_ldap_surname_attribute':    'LDAP_SURNAME_ATTRIBUTE',
+    'auth_ldap_full_name_attribute':  'LDAP_FULL_NAME_ATTRIBUTE',
+    'auth_ldap_email_domain':         'LDAP_EMAIL_DOMAIN',
+    'auth_ldap_email_attribute':      'LDAP_EMAIL_ATTRIBUTE',
+    'auth_ldap_tls':                  'LDAP_TLS',
+    'auth_ldap_base_dn':              'LDAP_BASE_DN',
+    'auth_ldap_uid_mask':             'LDAP_UID_MASK',
+    'auth_ldap_uri':                  'LDAP_URI',
+    'auth_ad_domain_name':            'AD_DOMAIN_NAME',
+    'auth_ad_use_tls':                'AD_USE_TLS',
+    'auth_ad_find_dc_from_dns':       'AD_FIND_DC_FROM_DNS',
+    'auth_ad_domain_controller':      'AD_DOMAIN_CONTROLLER',
+    'auth_ad_ou_name':                'AD_OU_NAME',
+    'auth_ad_group_name':             'AD_GROUP_NAME',
+    'auth_ad_search_root':            'AD_SEARCH_ROOT',
+    'auth_ad_recursion_depth':        'AD_RECURSION_DEPTH',
+    'auth_x509_username_field':       'X509_USERNAME_FIELD',
+    'auth_x509_username_regex':       'X509_USERNAME_REGEX',
+    'auth_x509_autocreate_users':     'X509_AUTOCREATE_USERS',
+    'auth_nis_email_domain':          'NIS_EMAIL_DOMAIN',
+    'site_domain_method':             'DOMAIN_METHOD',
 }
 settings_map.update(get_django_settings_map())
 settings_map.update(log_siteconfig.settings_map)
@@ -131,6 +124,7 @@ defaults.update({
     'diffviewer_syntax_highlighting_threshold': 0,
     'diffviewer_show_trailing_whitespace': True,
     'mail_send_review_mail':               False,
+    'mail_send_new_user_mail':             False,
     'search_enable':                       False,
     'site_domain_method':                  'http',
 
@@ -187,6 +181,18 @@ def load_site_config():
     if not siteconfig.get_defaults():
         siteconfig.add_defaults(defaults)
 
+    # The default value for DEFAULT_EMAIL_FROM (webmaster@localhost)
+    # is less than good, so use a better one if it's set to that or if
+    # we haven't yet set this value in siteconfig.
+    mail_default_from = \
+        siteconfig.settings.get('mail_default_from',
+                                global_settings.DEFAULT_FROM_EMAIL)
+
+    if (not mail_default_from or
+        mail_default_from == global_settings.DEFAULT_FROM_EMAIL):
+        domain = siteconfig.site.domain.split(':')[0]
+        siteconfig.set('mail_default_from', 'noreply@' + domain)
+
 
     # Populate the settings object with anything relevant from the siteconfig.
     apply_django_settings(siteconfig, settings_map)
@@ -215,10 +221,13 @@ def load_site_config():
 
 
     # Set the auth backends
-    auth_backend = siteconfig.settings.get("auth_backend", "builtin")
-    builtin_backend = auth_backend_map['builtin']
+    auth_backend_map = dict(get_registered_auth_backends())
+    auth_backend_id = siteconfig.settings.get("auth_backend", "builtin")
+    builtin_backend_obj = auth_backend_map['builtin']
+    builtin_backend = "%s.%s" % (builtin_backend_obj.__module__,
+                                 builtin_backend_obj.__name__)
 
-    if auth_backend == "custom":
+    if auth_backend_id == "custom":
         custom_backends = siteconfig.settings.get("auth_custom_backends")
 
         if isinstance(custom_backends, basestring):
@@ -230,9 +239,12 @@ def load_site_config():
 
         if builtin_backend not in custom_backends:
             settings.AUTHENTICATION_BACKENDS += (builtin_backend,)
-    elif auth_backend != "builtin" and auth_backend in auth_backend_map:
+    elif auth_backend_id != "builtin" and auth_backend_id in auth_backend_map:
+        backend = auth_backend_map[auth_backend_id]
+
         settings.AUTHENTICATION_BACKENDS = \
-            (auth_backend_map[auth_backend], builtin_backend)
+            ("%s.%s" % (backend.__module__, backend.__name__),
+             builtin_backend)
     else:
         settings.AUTHENTICATION_BACKENDS = (builtin_backend,)
 

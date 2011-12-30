@@ -6,6 +6,10 @@ Review Board Code Base Documentation
 Introduction
 ============
 
+This is a set of guides on the Review Board codebase. They cover the
+process for developing Review Board, information on writing third party
+modules, and contributing to the project.
+
 Review Board is written in the `Python`_ programming language and makes use
 of the `Django`_ web framework.
 
@@ -26,9 +30,32 @@ Contributor Guides
    coding-standards
    contributing-patches
    custom-forks
+   extending/auth-backends
+   extending/legacy-auth-backends
    unit-tests/fixtures
 
 .. `Creating SCMTools`
+
+
+Git Guides
+==========
+
+.. toctree::
+   :maxdepth: 1
+
+   git/clean-commits
+
+
+Related Resources
+=================
+
+* `Django documentation`_
+* `The Django Book`_
+* `Git Cheat Sheets`_
+
+.. _`Django documentation`: http://docs.djangoproject.com/
+.. _`The Django Book`: http://djangobook.com/
+.. _`Git Cheat Sheets`: http://help.github.com/git-cheat-sheets/
 
 
 .. comment: vim: ft=rst et ts=3

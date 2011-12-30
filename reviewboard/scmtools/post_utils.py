@@ -9,11 +9,11 @@ def get_known_revisions(userid, repository, freshness_delta, extract_revision_us
     # Our fresh revisions cannot be contained in old requests!
     # We don't have to consider any ReviewRequest which were last updated before the shown user revisions were created.
     first_day = date.today()-freshness_delta
-    requests = ReviewRequest.objects.filter(last_updated__gte=first_day.strftime("%Y-%m-%d"))
-    requests = requests.filter(repository = repository)
+    query = ReviewRequest.objects.filter(last_updated__gte=first_day.strftime("%Y-%m-%d"))
+    query = query.filter(repository__path__exact=repository)
 
     revisions = []
-    for request in requests:
+    for request in query:
         if request.status == ReviewRequest.DISCARDED:
             # skip request
             continue
@@ -42,11 +42,15 @@ class DiffFile:
 
 class RepositoryRevisionCache:
 
-    def __init__(self, cache_key_prefix, freshness_delta, func_fetch_log_of_day):
+    def __init__(self, cache_key_prefix, freshness_delta):
         self.cache_key_prefix = cache_key_prefix
         self.freshness_delta = freshness_delta
-        self.func_fetch_log_of_day = func_fetch_log_of_day
 
+
+    def get_freshness_delta(self):
+        return self.freshness_delta
+
+    
     def get_scm_user(self, userid):
         cache_key = self.cache_key_prefix + '.post_scm_user.' + '.' + userid
         return cache.get(cache_key) or userid
@@ -57,8 +61,8 @@ class RepositoryRevisionCache:
         cache.set(cache_key, scm_user, 30 * 3600 * 24) # expires after 1 month (max memcached expiration value)
 
 
-    def get_latest_commits(self, userid):
-        log_entries = self._get_latest_revision_log()
+    def get_latest_commits(self, userid, func_fetch_log_of_day):
+        log_entries = self._get_latest_revision_log(func_fetch_log_of_day)
         user_revs = []
 
         lc_userid = userid.lower()
@@ -94,22 +98,22 @@ class RepositoryRevisionCache:
         return [item for sublist in ignore_lists for item in sublist]
 
 
-    def _get_latest_revision_log(self):
+    def _get_latest_revision_log(self, func_fetch_log_of_day):
         cur = date.today()
         first_day = date.today()-self.freshness_delta
         log_entries = []
         while cur > first_day:
             latest_entries = log_entries
-            log_entries = self._get_log_of_day(cur)
+            log_entries = self._get_log_of_day(cur, func_fetch_log_of_day)
             log_entries.extend(latest_entries)
             cur -= timedelta(days=1)
         return log_entries
 
 
-    def _get_log_of_day(self, day):
+    def _get_log_of_day(self, day, func_fetch_log_of_day):
         if day == date.today():
             # Today - do not use cache
-            return self.func_fetch_log_of_day(day)
+            return func_fetch_log_of_day(day)
         else:
 
             cache_key = self.cache_key_prefix + '.post_rc.'+ day.strftime("%Y-%m-%d")
@@ -118,6 +122,6 @@ class RepositoryRevisionCache:
             if entries != None:
                 return entries
             else:
-                entries = self.func_fetch_log_of_day(day)
+                entries = func_fetch_log_of_day(day)
                 cache.set(cache_key, entries, self.freshness_delta.days * 3600 * 24 + self.freshness_delta.seconds)
             return entries

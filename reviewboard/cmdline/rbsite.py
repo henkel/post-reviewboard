@@ -13,6 +13,8 @@ import warnings
 from optparse import OptionGroup, OptionParser
 from random import choice
 
+from reviewboard import get_version_string
+
 
 DOCS_BASE = "http://www.reviewboard.org/docs/manual/dev/"
 
@@ -40,7 +42,7 @@ warnings.resetwarnings()
 warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
 
 
-VERSION = "0.1"
+VERSION = get_version_string()
 DEBUG = False
 
 
@@ -302,14 +304,19 @@ class Site(object):
         if db_engine == "postgresql":
             db_engine = "postgresql_psycopg2"
 
-        fp.write("DATABASE_ENGINE = '%s'\n" % db_engine)
-        fp.write("DATABASE_NAME = '%s'\n" % self.db_name.replace("\\", "\\\\"))
+        fp.write("DATABASES = {\n")
+        fp.write("    'default': {\n")
+        fp.write("        'ENGINE': 'django.db.backends.%s',\n" % db_engine)
+        fp.write("        'NAME': '%s',\n" % self.db_name.replace("\\", "\\\\"))
 
         if self.db_type != "sqlite3":
-            fp.write("DATABASE_USER = '%s'\n" % (self.db_user or ""))
-            fp.write("DATABASE_PASSWORD = '%s'\n" % (self.db_pass or ""))
-            fp.write("DATABASE_HOST = '%s'\n" % (self.db_host or ""))
-            fp.write("DATABASE_PORT = '%s'\n" % (self.db_port or ""))
+            fp.write("        'USER': '%s',\n" % (self.db_user or ""))
+            fp.write("        'PASSWORD': '%s',\n" % (self.db_pass or ""))
+            fp.write("        'HOST': '%s',\n" % (self.db_host or ""))
+            fp.write("        'PORT': '%s',\n" % (self.db_port or ""))
+
+        fp.write("    },\n")
+        fp.write("}\n")
 
         fp.write("\n")
         fp.write("# Unique secret key. Don't share this with anybody.\n")
@@ -345,6 +352,74 @@ class Site(object):
         """
         self.run_manage_command("evolve", ["--noinput", "--execute"])
 
+    def get_settings_upgrade_needed(self):
+        """Determines whether or not a settings upgrade is needed."""
+        try:
+            import settings_local
+
+            return hasattr(settings_local, 'DATABASE_ENGINE')
+        except ImportError:
+            sys.stderr.write("Unable to import settings_local. "
+                             "Cannot determine if upgrade is needed.\n")
+            return False
+
+    def upgrade_settings(self):
+        """Performs a settings upgrade."""
+        settings_file = os.path.join(self.abs_install_dir, "conf",
+                                     "settings_local.py")
+        buf = []
+        database_info = {}
+        database_keys = ('ENGINE', 'NAME', 'USER', 'PASSWORD', 'HOST', 'PORT')
+
+        try:
+            import settings_local
+
+            if hasattr(settings_local, 'DATABASE_ENGINE'):
+                engine = settings_local.DATABASE_ENGINE
+
+                # Don't convert anything other than the ones we know about,
+                # or third parties with custom databases may have problems.
+                if engine in ('sqlite3', 'mysql', 'postgresql'):
+                    engine = 'django.db.backends.' + engine
+
+                database_info['ENGINE'] = engine
+
+                for key in database_keys:
+                    if key != 'ENGINE':
+                        database_info[key] = getattr(settings_local,
+                                                     'DATABASE_%s' % key, '')
+        except ImportError:
+            sys.stderr.write("Unable to import settings_local for upgrade.\n")
+            return
+
+        fp = open(settings_file, 'r')
+
+        found_database = False
+
+        for line in fp.readlines():
+            if line.startswith('DATABASE_'):
+                if not found_database:
+                    found_database = True
+
+                    buf.append("DATABASES = {\n")
+                    buf.append("    'default': {\n")
+
+                    for key in database_keys:
+                        if database_info[key]:
+                            buf.append("        '%s': '%s',\n" %
+                                       (key, database_info[key]))
+
+                    buf.append("    },\n")
+                    buf.append("}\n")
+            else:
+                buf.append(line)
+
+        fp.close()
+
+        fp = open(settings_file, 'w')
+        fp.writelines(buf)
+        fp.close()
+
     def create_admin_user(self):
         """
         Creates an administrator user account.
@@ -365,7 +440,6 @@ class Site(object):
 
         try:
             from django.core.management import execute_manager, get_commands
-            from reviewboard.admin.migration import fix_django_evolution_issues
             import reviewboard.settings
 
             if not params:
@@ -373,8 +447,6 @@ class Site(object):
 
             if DEBUG:
                 params.append("--verbosity=0")
-
-            fix_django_evolution_issues(reviewboard.settings)
 
             commands_dir = os.path.join(self.abs_install_dir, 'commands')
 
@@ -452,6 +524,7 @@ class Site(object):
             'sitedomain_escaped': domain_name_escaped,
             'siteid': self.site_id,
             'siteroot': self.site_root,
+            'siteroot_noslash': self.site_root[1:-1],
         }
 
         template = re.sub("@([a-z_]+)@", lambda m: data.get(m.group(1)),
@@ -491,49 +564,49 @@ class UIToolkit(object):
         """
         Prompts the user for some text. This may contain a default value.
         """
-        raise NotImplemented
+        raise NotImplementedError
 
     def prompt_choice(self, page, prompt, choices,
                       save_obj=None, save_var=None):
         """
         Prompts the user for an item amongst a list of choices.
         """
-        raise NotImplemented
+        raise NotImplementedError
 
     def text(self, page, text):
         """
         Displays a block of text to the user.
         """
-        raise NotImplemented
+        raise NotImplementedError
 
     def disclaimer(self, page, text):
         """Displays a block of disclaimer text to the user."""
-        raise NotImplemented
+        raise NotImplementedError
 
     def urllink(self, page, url):
         """
         Displays a URL to the user.
         """
-        raise NotImplemented
+        raise NotImplementedError
 
     def itemized_list(self, page, title, items):
         """
         Displays an itemized list.
         """
-        raise NotImplemented
+        raise NotImplementedError
 
     def step(self, page, text, func):
         """
         Adds a step of a multi-step operation. This will indicate when
         it's starting and when it's complete.
         """
-        raise NotImplemented
+        raise NotImplementedError
 
     def error(self, text, done_func=None):
         """
         Displays a block of error text to the user.
         """
-        raise NotImplemented
+        raise NotImplementedError
 
 
 class ConsoleUI(UIToolkit):
@@ -962,11 +1035,10 @@ class GtkUI(UIToolkit):
         """
         Prompts the user for an item amongst a list of choices.
         """
-        valid_choices = {}
 
-        def on_toggled(radio_button):
+        def on_toggled(radio_button, data):
             if radio_button.get_active():
-                setattr(save_obj, save_var, valid_choices[radio_button])
+                setattr(save_obj, save_var, data)
 
         hbox = gtk.HBox(False, 0)
         hbox.show()
@@ -988,6 +1060,7 @@ class GtkUI(UIToolkit):
         label.set_use_markup(True)
 
         buttons = []
+        first_enabled = 0
 
         for choice in choices:
             description = ''
@@ -1000,21 +1073,27 @@ class GtkUI(UIToolkit):
             else:
                 text, description, enabled = choice
 
+            if not (enabled or first_enabled):
+                first_enabled += 1
+
             radio_button = gtk.RadioButton(label='%s %s' % (text, description),
                                            use_underline=False)
             radio_button.show()
             vbox.pack_start(radio_button, False, True, 0)
             buttons.append(radio_button)
             radio_button.set_sensitive(enabled)
-            radio_button.connect('toggled', on_toggled)
+            radio_button.connect('toggled', on_toggled, text)
 
-            valid_choices[radio_button] = text
+        # Set the first enabled button chosen if there is any
+        if first_enabled >= len(buttons):
+            raise RuntimeWarning('There is no valid choice')
 
-            if buttons[0] != radio_button:
-                radio_button.set_group(buttons[0])
+        # Force 'toggled' signal to set default value
+        buttons[first_enabled].toggled()
 
-        # Force this to save.
-        on_toggled(buttons[0])
+        for button in buttons:
+            if button != buttons[first_enabled]:
+                button.set_group(buttons[first_enabled])
 
     def text(self, page, text):
         """
@@ -1444,7 +1523,7 @@ class InstallCommand(Command):
                        is_visible_func=lambda: site.web_server_type == "apache")
 
         ui.text(page, "Based on our experiences, we recommend using "
-                      "modpython with Review Board.")
+                      "wsgi with Review Board.")
 
         ui.prompt_choice(page, "Python Loader",
                          [
@@ -1554,10 +1633,17 @@ class UpgradeCommand(Command):
         print "Rebuilding directory structure"
         site.rebuild_site_directory()
 
+        if site.get_settings_upgrade_needed():
+            print "Upgrading site settings_local.py"
+            site.upgrade_settings()
+
         if options.upgrade_db:
             print "Updating database. This may take a while."
             site.sync_database()
             site.migrate_database()
+
+            print "Resetting in-database caches."
+            site.run_manage_command("fixreviewcounts")
 
         print "Upgrade complete."
 

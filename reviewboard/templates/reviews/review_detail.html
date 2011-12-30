@@ -7,6 +7,7 @@
 {% block title %}{{review_request_details.summary}} | {% trans "Review Request" %}{% endblock %}
 
 {% block jsconsts %}
+{{block.super}}
 {%  include "reviews/review_flags.js" %}
 {% endblock %}
 
@@ -22,10 +23,6 @@
 {% endblock %}
 
 {% block scripts-post %}
-<script type="text/javascript" src="{{MEDIA_URL}}djblets/js/jquery-ui-1.6rc5.min.js"></script>
-<script type="text/javascript" src="{{MEDIA_URL}}djblets/js/jquery.gravy.js?{{MEDIA_SERIAL}}"></script>
-<script type="text/javascript" src="{{MEDIA_URL}}rb/js/ui.autocomplete.min.js?{{MEDIA_SERIAL}}"></script>
-<script type="text/javascript" src="{{MEDIA_URL}}rb/js/common.js?{{MEDIA_SERIAL}}"></script>
 <script type="text/javascript" src="{{MEDIA_URL}}rb/js/reviews.js?{{MEDIA_SERIAL}}"></script>
 <script type="text/javascript" src="{{MEDIA_URL}}rb/js/jquery.form.js?{{MEDIA_SERIAL}}"></script>
 {% endblock %}
@@ -36,7 +33,7 @@
 
 {% box "review-request" %}
 
-<ul id="actions">
+<ul class="actions">
 {% include "reviews/review_request_actions_secondary.html" %}
 {% if review_request_details.diffset or review_request.diffset_history.diffsets.count %}
  <li class="primary"><a href="diff/raw/">{% trans "Download Diff" %}</a></li>
@@ -49,8 +46,20 @@
 
 <div class="main">
 {% include "reviews/review_request_box.html" %}
+
+<ul class="controls">
+{% if entries %}
+ <li>
+  <img width="14" height="14" border="0" alt="" src="{{MEDIA_URL}}rb/images/expand.png?{{MEDIA_SERIAL}}">
+  <a href="#" id="expand-all">{% trans "Expand All" %}</a>
+ </li>
+{% endif %}
+</ul>
+
 </div>
 {% endbox %}
+
+
 
 {% for entry in entries %}
 {%  if entry.review %}
@@ -59,19 +68,22 @@
 {%   if forloop.last %}
 <a name="last-review"></a>
 {%   endif %}
-{%   box "review" %}
+{% definevar "boxclass" %}review {{entry.class}}{% enddefinevar %}
+{% box boxclass %}
 <div class="main">
  <div class="banners"></div>
  <div class="header">
   {% if entry.review.ship_it %}<div class="shipit">{% trans "Ship it!" %}</div>{% endif %}
-  <div class="reviewer"><a href="{% url user entry.review.user %}">{{entry.review.user|user_displayname}}</a></div>
+  <div class="collapse-button"></div>
+  <div class="reviewer"><a href="{% url user entry.review.user %}" class="user">{{entry.review.user|user_displayname}}</a></div>
   <div class="posted_time">{% blocktrans with entry.review.timestamp|timesince as timestamp_since  and entry.review.timestamp|date:"F jS, Y, P" as timestamp_date %}Posted {{ timestamp_since }} ago ({{ timestamp_date }}){% endblocktrans %}</div>
  </div>
  <div class="body">
    <pre class="body_top reviewtext">{{entry.review.body_top|escape}}</pre>
    {% reply_section entry.review "" "body_top" "rcbt" %}
-{% if entry.review.comments.all or entry.review.screenshot_comments.all %}
+{% if entry.review.comments.all or entry.review.screenshot_comments.all or entry.review.file_attachment_comments.all %}
    <dl class="diff-comments">
+
 {% for comment in entry.review.screenshot_comments.all %}
     <dt>
      <a name="scomment{{comment.id}}"></a>
@@ -90,9 +102,45 @@
     </dt>
     <dd>
      <pre>{{comment.text|escape}}</pre>
+{% if comment.issue_opened %}
+     <div id="comment-{{comment.id}}-issue" class="issue-indicator">
+       {% comment_issue review_request_details comment "screenshot_comment" %}
+     </div>
+{% endif %}
      {% reply_section entry.review comment "screenshot_comment" "rc" %}
     </dd>
 {% endfor %}
+
+{% for comment in entry.review.file_attachment_comments.all %}
+    <dt>
+     <a name="fcomment{{comment.id}}"></a>
+     <div class="file-attachment">
+      <a href="{{comment.file_attachment.get_absolute_url}}">{% spaceless %}
+       <img src="{{comment.file_attachment.icon_url}}" />
+        <span class="filename">{{comment.file_attachment.filename}}</span>
+	  </a>
+{% if draft and comment.file_attachment.draft_caption %}
+      <p class="caption">{{comment.file_attachment.draft_caption}}</p>
+{% else %}
+{%  if comment.file_attachment.caption %}
+      <p class="caption">{{comment.file_attachment.caption}}</p>
+{%  endif %}
+{% endif %}
+{% endspaceless %}</a>
+      </span>
+     </div>
+    </dt>
+    <dd>
+     <pre>{{comment.text|escape}}</pre>
+{% if comment.issue_opened %}
+     <div id="comment-{{comment.id}}-issue" class="issue-indicator">
+       {% comment_issue review_request_details comment "file_attachment_comment" %}
+     </div>
+{% endif %}
+     {% reply_section entry.review comment "file_attachment_comment" "rc" %}
+    </dd>
+{% endfor %}
+
 {% for comment in entry.review.ordered_comments %}
     <dt>
      <a name="comment{{comment.id}}"></a>
@@ -123,6 +171,11 @@
     </dt>
     <dd>
      <pre class="reviewtext">{{comment.text|escape}}</pre>
+{% if comment.issue_opened %}
+     <div id="comment-{{comment.id}}-issue" class="issue-indicator">
+       {% comment_issue review_request_details comment "comment" %}
+     </div>
+{% endif %}
      {% reply_section entry.review comment "comment" "rc" %}
     </dd>
     <script type="text/javascript">
@@ -150,10 +203,12 @@
 {%  endif %}
 {%  if entry.changedesc %}
 <a name="changedesc{{entry.changedesc.id}}"></a>
-{%   box "changedesc" %}
+{% definevar "boxclass" %}changedesc {{entry.class}}{% enddefinevar %}
+{% box boxclass %}
 <div class="main">
  <div class="header">
-   <b>{% trans "Review request changed" %}</b>
+   <div class="collapse-button"></div>
+   <div class="reviewer"><b>{% trans "Review request changed" %}</b></div>
    <div class="posted_time">{% blocktrans with entry.changedesc.timestamp|timesince as timestamp_since and entry.changedesc.timestamp|date:"F jS, Y, P" as timestamp_date %}Updated {{ timestamp_since }} ago ({{ timestamp_date }}){% endblocktrans %}</div>
  </div>
  <div class="body">

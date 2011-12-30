@@ -238,12 +238,153 @@ $.fn.toggleStar = function() {
     });
 };
 
+/*
+ * The wrapper function of autocomplete for the search field.
+ * Currently, quick search searches for users, groups, and review
+ * requests through the usage of search resource.
+ */
+var SUMMARY_TRIM_LEN = 28;
+
+$.fn.searchAutoComplete = function() {
+    $("#search_field")
+        .autocomplete({
+            formatItem: function(data) {
+                var s;
+
+                if (data.username) {
+                    // For the format of users
+                    s = data.username;
+                    s += " <span>(" + data.fullname + ")</span>";
+                } else if (data.name) {
+                    // For the format of groups
+                    s = data.name;
+                    s += " <span>(" + data.display_name + ")</span>";
+                } else if (data.summary) {
+                    // For the format of review requests
+                    if (data.summary.length < SUMMARY_TRIM_LEN) {
+                        s = data.summary;
+                    } else {
+                        s = data.summary.substring(0, SUMMARY_TRIM_LEN);
+                    }
+
+                    s += " <span>(" + data.id + ")</span>";
+                }
+
+                return s;
+            },
+            matchCase: false,
+            multiple: true,
+            clickToURL: true,
+            selectFirst: false,
+            width: 240,
+            parse: function(data) {
+                var jsonData = JSON.parse(data);
+                var jsonDataSearch = jsonData.search;
+                var parsed = [];
+                var objects = ["users", "groups", "review_requests"];
+                var values = ["username", "name", "summary"];
+                var items;
+
+                for (var j = 0; j < objects.length; j++) {
+                    items = jsonDataSearch[objects[j]];
+
+                    for (var i = 0; i < items.length; i++) {
+                        var value = items[i];
+
+                        if (j != 2) {
+                            parsed.push({
+                                data: value,
+                                value: value[values[j]],
+                                result: value[values[j]]
+                            });
+                        } else if (value.public) {
+                            // Only show review requests that are public
+                            value.url = SITE_ROOT + "r/" + value.id;
+                            parsed.push({
+                                data: value,
+                                value: value[values[j]],
+                                result: value[values[j]]
+                            });
+                        }
+                    }
+                }
+
+                return parsed;
+            },
+            url: SITE_ROOT + "api/" + "search/"
+        })
+};
+
+var gUserInfoBoxCache = {};
+
+/*
+ * Displays a infobox when hovering over a user.
+ *
+ * The infobox is displayed after a 1 second delay.
+ */
+$.fn.user_infobox = function() {
+    var POPUP_DELAY_MS = 1000;
+    var OFFSET_LEFT = -20;
+    var OFFSET_TOP = -30;
+
+    var infobox = $("#user-infobox");
+
+    if (infobox.length == 0) {
+        infobox = $("<div id='user-infobox'/>'").hide();
+        $(document.body).append(infobox);
+    }
+
+    return this.each(function() {
+        var self = $(this);
+        var timeout = null;
+        var url = self.attr('href') + 'infobox/';
+
+        self.hover(
+            function() {
+                timeout = setTimeout(function() {
+                    if (!gUserInfoBoxCache[url]) {
+                        infobox
+                            .empty()
+                            .addClass("loading")
+                            .load(url,
+                                  function(responseText, textStatus) {
+                                      gUserInfoBoxCache[url] = responseText;
+                                      infobox.removeClass("loading");
+                                  });
+                    } else {
+                        infobox.html(gUserInfoBoxCache[url]);
+                    }
+
+                    var offset = self.offset();
+
+                    infobox
+                        .move(offset.left + OFFSET_LEFT,
+                              offset.top - infobox.height() + OFFSET_TOP,
+                              "absolute")
+                        .show();
+                }, POPUP_DELAY_MS);
+            },
+            function() {
+                clearTimeout(timeout);
+                infobox.hide();
+            });
+    });
+}
+
+
 $(document).ready(function() {
     $('<div id="activity-indicator" />')
         .text("Loading...")
         .hide()
         .appendTo("body");
 
+    var searchGroupsEl = $("#search_field");
+
+    if (searchGroupsEl.length > 0) {
+        searchGroupsEl.searchAutoComplete();
+    }
+
+    $('.user').user_infobox();
     $('.star').toggleStar();
 });
 

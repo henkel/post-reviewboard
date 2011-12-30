@@ -24,6 +24,8 @@ class RepositoryAdmin(admin.ModelAdmin):
                 'api_token',
                 'username',
                 'password',
+                'project_slug',
+                'repository_name',
             ),
             'classes': ('wide',),
         }),
@@ -38,9 +40,19 @@ class RepositoryAdmin(admin.ModelAdmin):
             ),
             'classes': ('wide',),
         }),
+        (_('Access Control'), {
+            'fields': ('public', 'users', 'review_groups'),
+            'classes': ('wide',),
+        }),
         (_('Advanced'), {
             'fields': ('encoding',),
             'classes': ('wide',),
+        }),
+        (_('State'), {
+            'description': _('<p>This is advanced state that should not be '
+                             'modified unless something is wrong.</p>'),
+            'fields': ('local_site',),
+            'classes': ['collapse'],
         }),
     )
     form = RepositoryForm

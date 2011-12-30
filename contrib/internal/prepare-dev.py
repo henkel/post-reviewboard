@@ -4,7 +4,11 @@ import os
 import pkg_resources
 import platform
 import sys
+from optparse import OptionParser
 from random import choice
+
+
+options = None
 
 
 class SiteOptions(object):
@@ -28,9 +32,20 @@ def create_settings():
                 ])
 
                 out_fp.write('SECRET_KEY = "%s"\n' % secret_key)
-            elif line.startswith("DATABASE_NAME = "):
-                out_fp.write('DATABASE_NAME = "%s"\n' %
-                             os.path.abspath("reviewboard.db"))
+            elif line.strip().startswith("'ENGINE': "):
+                out_fp.write("        'ENGINE': 'django.db.backends.%s',\n" %
+                             options.db_type)
+            elif line.strip().startswith("'NAME': "):
+                if options.db_type == 'sqlite':
+                    name = os.path.abspath(options.db_name)
+                else:
+                    name = options.db_name
+
+                out_fp.write("        'NAME': '%s',\n" % name)
+            elif line.strip().startswith("'USER': "):
+                out_fp.write("        'USER': '%s',\n" % options.db_user)
+            elif line.strip().startswith("'PASSWORD': "):
+                out_fp.write("        'PASSWORD': '%s',\n" % options.db_password)
             else:
                 out_fp.write(line)
 
@@ -62,6 +77,34 @@ def build_egg_info():
     os.system("%s setup.py egg_info" % sys.executable)
 
 
+def parse_options(args):
+    global options
+
+    parser = OptionParser(usage='%prog [options]')
+    parser.add_option('--no-media', action='store_false', dest='install_media',
+                      default=True,
+                      help="Don't install media files")
+    parser.add_option('--no-db', action='store_false', dest='sync_db',
+                      default=True,
+                      help="Don't synchronize the database")
+    parser.add_option('--database-type', dest='db_type',
+                      default='sqlite3',
+                      help="Database type (postgresql, mysql, sqlite3)")
+    parser.add_option('--database-name', dest='db_name',
+                      default='reviewboard.db',
+                      help="Database name (or path, for sqlite3)")
+    parser.add_option('--database-user', dest='db_user',
+                      default='',
+                      help="Database user")
+    parser.add_option('--database-password', dest='db_password',
+                      default='',
+                      help="Database password")
+
+    options, args = parser.parse_args(args)
+
+    return args
+
+
 def main():
     if not os.path.exists(os.path.join("reviewboard", "manage.py")):
         sys.stderr.write("This must be run from the top-level Review Board "
@@ -74,6 +117,7 @@ def main():
     sys.path.insert(0, os.getcwd())
     from reviewboard.cmdline.rbsite import Site
 
+    parse_options(sys.argv[1:])
 
     # Re-use the Site class, since it has some useful functions.
     site = Site("reviewboard", SiteOptions)
@@ -81,10 +125,12 @@ def main():
     create_settings()
     build_egg_info()
 
-    install_media(site)
+    if options.install_media:
+        install_media(site)
 
-    print "Synchronizing database..."
-    site.sync_database(allow_input=True)
+    if options.sync_db:
+        print "Synchronizing database..."
+        site.sync_database(allow_input=True)
 
     print
     print "Your Review Board tree is ready for development."

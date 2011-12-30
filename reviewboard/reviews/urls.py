@@ -44,11 +44,9 @@ urlpatterns = patterns('reviewboard.reviews.views',
      'diff_fragment'),
 
     # Screenshots
-    (r'^(?P<review_request_id>[0-9]+)/s/(?P<screenshot_id>[0-9]+)/$',
-     'view_screenshot'),
-
-    (r'^(?P<review_request_id>[0-9]+)/s/(?P<screenshot_id>[0-9]+)/delete/$',
-     'delete_screenshot'),
+    url(r'^(?P<review_request_id>[0-9]+)/s/(?P<screenshot_id>[0-9]+)/$',
+        'view_screenshot',
+        name='screenshot'),
 
     # E-mail previews
     (r'^(?P<review_request_id>[0-9]+)/preview-email/(?P<format>(text|html))/$',
@@ -61,3 +59,4 @@ urlpatterns = patterns('reviewboard.reviews.views',
     # Search
     url(r'^search/$', 'search', name="search"),
 )
+
