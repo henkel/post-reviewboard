@@ -1406,12 +1406,13 @@ class DiffResource(WebAPIResource):
                             REPO_FILE_NOT_FOUND, INVALID_FORM_DATA)
     @webapi_request_fields(
         required={
+
+        },
+        optional={
             'path': {
                 'type': file,
                 'description': 'The main diff to upload.',
             },
-        },
-        optional={
             'basedir': {
                 'type': str,
                 'description': 'The base directory that will prepended to '
@@ -1424,6 +1425,10 @@ class DiffResource(WebAPIResource):
             'parent_diff_path': {
                 'type': file,
                 'description': 'The optional parent diff to upload.',
+            },
+            'revisions': {
+                'type': str,
+                'description': 'A list of revision identifiers, e.g. 12345 56789 34567',
             },
         }
     )
@@ -1475,8 +1480,13 @@ class DiffResource(WebAPIResource):
             return WebAPIResponseFormError(request, form)
 
         try:
-            diffset = form.create(request.FILES['path'],
-                                  request.FILES.get('parent_diff_path'))
+            if 'path' in request.FILES:
+                error_field = 'path'
+            elif 'revisions' in request.REQUEST:
+                error_field = 'revisions'
+            diffset, description = form.create(request.FILES.get('path'),
+                                               request.FILES.get('parent_diff_path'))
+
         except FileNotFoundError, e:
             return REPO_FILE_NOT_FOUND, {
                 'file': e.path,
@@ -1485,7 +1495,7 @@ class DiffResource(WebAPIResource):
         except EmptyDiffError, e:
             return INVALID_FORM_DATA, {
                 'fields': {
-                    'path': [str(e)]
+                    error_field: [str(e)]
                 }
             }
         except Exception, e:
@@ -1495,7 +1505,7 @@ class DiffResource(WebAPIResource):
 
             return INVALID_FORM_DATA, {
                 'fields': {
-                    'path': [str(e)]
+                    error_field: [str(e)]
                 }
             }
 
@@ -1518,6 +1528,12 @@ class DiffResource(WebAPIResource):
         # We only want to add default reviewers the first time.  Was bug 318.
         if review_request.diffset_history.diffsets.count() == 0:
             draft.add_default_reviewers();
+
+        # Modify description
+        if description:
+            # post-commit review
+            draft.description += '--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---\n'
+            draft.description += unicode(description, errors='replace')
 
         draft.save()
 
