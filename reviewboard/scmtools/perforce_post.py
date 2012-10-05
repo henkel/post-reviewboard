@@ -303,6 +303,9 @@ class PerforcePostCommitClient(PerforceClient):
             indent = ''.ljust(1 + len(changedesc['change']))
             
         description += "".join((indent + line.rstrip() + "\n" for line in changedesc['desc'].splitlines())) + "\n"        
+        
+        # Basic Atlassian Jira integration
+        description = description.replace("jira:", "http://jira/browse/")
 
         return description
     
